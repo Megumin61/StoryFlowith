@@ -1,70 +1,42 @@
-# Getting Started with Create React App
+# StoryFlowith
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+基于React的故事分镜工具，支持与Liblib AI API集成的图像生成功能。
 
-## Available Scripts
+## 配置API密钥
 
-In the project directory, you can run:
+在项目根目录创建一个 `.env` 文件，添加以下内容：
 
-### `npm start`
+```
+# Liblib AI API 配置
+REACT_APP_LIBLIB_ACCESS_KEY=你的AccessKey
+REACT_APP_LIBLIB_SECRET_KEY=你的SecretKey
+```
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+请将 `你的AccessKey` 和 `你的SecretKey` 替换为从Liblib开放平台获取的实际密钥。
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## 开发
 
-### `npm test`
+```bash
+# 安装依赖
+npm install
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+# 启动开发服务器
+npm start
+```
 
-### `npm run build`
+## 图像生成功能说明
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+本项目使用Liblib的Kontext模型进行图像生成，支持以下功能：
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+1. 单个分镜的图像生成
+2. 批量生成所有分镜图像
+3. 更改全局风格并重新生成图像
+4. 对单个分镜图像的重新生成
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## API消耗说明
 
-### `npm run eject`
+根据Liblib开放平台的计费规则，每次生成图像会消耗积分：
+- Kontext Pro版本：29积分/张
+- Kontext Max版本：58积分/张
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+请合理使用API以控制积分消耗。

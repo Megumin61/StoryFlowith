@@ -1,58 +1,27 @@
-// ȫ�������ļ�
-const config = {
-  // Ӧ������
-  app: {
-    name: 'StoryFlow',
-    version: '1.0.0',
-    description: 'AI�����Ķ�̬UX���°�ϵͳ',
-  },
+// LiblibAI API配置文件
+
+// API接口配置
+export const liblibConfig = {
+  // API基础URL - 使用代理时可使用相对路径
+  apiBaseUrl: 'https://openapi.liblibai.cloud',
   
-  // ���ػ�����
-  locale: {
-    language: 'zh-CN',
-    charset: 'UTF-8',
-    timezone: 'Asia/Shanghai',
-  },
+  // 访问凭证 - 实际值应从环境变量获取或通过安全存储提供
+  accessKey: process.env.REACT_APP_LIBLIB_ACCESS_KEY || 'OJZn7ETfjDq6ePIN3iGAAQ',
+  secretKey: process.env.REACT_APP_LIBLIB_SECRET_KEY || 'zS63WXVeBw9vRn_0hYaKKyy2UWPZDAc6',
   
-  // API���ã�����У�
-  api: {
-    baseUrl: '/api',
-    timeout: 10000,
-  },
-  
-  // �ı�������������
-  text: {
-    // ȷ���ı���ȷ��ʾ���������ܵı������⣩
-    encode: (text) => {
-      if (!text) return '';
-      try {
-        // ���Խ��ı�����ΪUTF-8
-        return text;
-      } catch (e) {
-        console.error('�ı��������:', e);
-        return text;
-      }
+  // 模板UUID
+  templateUuid: {
+    text2img: 'fe9928fde1b4491c9b360dd24aa2b115', // Kontext文生图模板ID
+    img2img: '1c0a9712b3d84e1b8a9f49514a46d88c'   // Kontext图生图模板ID
     },
     
-    // �������ܵ�������ʾ����
-    fixChinese: (text) => {
-      if (!text) return '';
-      // ���������κ���������Ĵ����߼��������Ҫ��
-      return text;
-    },
+  // 默认生成参数
+  defaultAspectRatio: '4:3',
     
-    // ����ַ����Ƿ��������
-    hasChinese: (text) => {
-      if (!text) return false;
-      return /[\u4e00-\u9fa5]/.test(text);
-    },
-    
-    // ��ȡһ���ı�����ȷ����汾
-    getEncoded: (text) => {
-      if (!text) return '';
-      return text;
-    }
-  }
+  // 调试模式
+  debug: true,  // 设置为true启用详细日志
 };
 
-export default config; 
+export default {
+  liblibConfig
+}; 
