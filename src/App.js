@@ -14,6 +14,7 @@ import StoryScript from './components/StoryScript';
 import UserPersonas from './components/UserPersonas';
 import RefinementPage from './components/RefinementPage'; // 新�：�入新页面组件
 import StoryboardTest from './components/StoryboardTest'; // ������������Է־����
+import FalaiTest from './components/FalaiTest'; // 导入FalAI测试组件
 import config from './config';
 import textUtils from './utils/textUtils';
 import './App.css';
@@ -32,12 +33,13 @@ function AppContent() {
   const [showIdea, setShowIdea] = useState(true);
   const [showRefinementPage, setShowRefinementPage] = useState(false); // 新�：控制新页面的显示状�
   const [showStoryboardTest, setShowStoryboardTest] = useState(false); // ���������Ʋ��Է־��������ʾ
+  const [showFalaiTest, setShowFalaiTest] = useState(false); // 控制FalAI测试组件的显示
   const [showJourneyMap, setShowJourneyMap] = useState(false);
   const [showStoryScript, setShowStoryScript] = useState(false);
   const [showUserPersonas, setShowUserPersonas] = useState(false);
   const [userPersonas, setUserPersonas] = useState([]);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
-  const [userInput, setUserInput] = useState(''); // 新�：保存用户最原�的输�
+  const [userInput, setUserInput] = useState(''); // 新：保存用户最原的输
 
   useEffect(() => {
     // 硿�全局使用正�'的编�
@@ -73,6 +75,16 @@ function AppContent() {
     // 注意：目� refinedStory 变�文本，并朧�析。storyData 保持不变
     setUserPersonas(personas);
     setShowRefinementPage(false);
+  };
+
+  const handleTestFalai = () => {
+    setShowIdea(false);
+    setShowFalaiTest(true);
+  };
+
+  const handleCloseFalaiTest = () => {
+    setShowFalaiTest(false);
+    setShowIdea(true);
   };
 
   const handleFrameSelect = (id) => {
@@ -201,7 +213,11 @@ function AppContent() {
       <main className="flex-grow relative overflow-hidden">
         <AnimatePresence>
           {showIdea && (
-            <IdeaModal onGenerate={handleGenerateCanvas} onTestStoryboard={handleTestStoryboard} />
+            <IdeaModal 
+              onGenerate={handleGenerateCanvas} 
+              onTestStoryboard={handleTestStoryboard} 
+              onTestFalai={handleTestFalai} // 添加FalAI测试按钮的处理函数
+            />
           )}
         </AnimatePresence>
         
@@ -220,6 +236,27 @@ function AppContent() {
               initialStoryText={userInput}
               onClose={handleCloseStoryboardTest}
             />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showFalaiTest && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-white"
+            >
+              <div className="absolute top-4 right-4">
+                <button
+                  onClick={handleCloseFalaiTest}
+                  className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <FalaiTest />
+            </motion.div>
           )}
         </AnimatePresence>
 

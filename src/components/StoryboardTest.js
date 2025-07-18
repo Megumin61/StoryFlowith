@@ -13,66 +13,147 @@ import ReactFlow, {
 } from 'reactflow';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Image, Save, ArrowLeft, Download, Plus, Settings, Zap, AlertTriangle } from 'lucide-react';
-
 import StoryNode from './StoryNode';
-// 导入测试图像和风格图
-import testImage from '../images/test.png';
-import style1Image from '../images/style1.png'; // 用户提供的风格图
 // 导入Liblib API服务
 import LiblibAPI from '../services/liblib';
+// 导入FalAI API服务
+import FalAI from '../services/falai';
 import { liblibConfig } from '../config';
 // 导入图像工具函数
 import { getPublicImageUrl } from '../services/imageUtils';
-
+// 导入测试图像和风格图
+import testImage from '../images/test.png';
+import style1Image from '../images/style1.png'; 
+import style2Image from '../images/style2.png'; 
+import style3Image from '../images/style3.png'; 
+import style4Image from '../images/style4.png'; 
 import 'reactflow/dist/style.css';
+
+// 风格图的公网URL
+const styleUrls = {
+  style1: "https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style1.png",
+  style2: "https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style2.png",
+  style3: "https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style3.png",
+  style4: "https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style4.png",
+};
+
+// 风格图本地引用
+const styleImages = {
+  style1: style1Image,
+  style2: style2Image,
+  style3: style3Image,
+  style4: style4Image,
+};
 
 const nodeTypes = { story: StoryNode };
 
-// Remove PromptCard component as we're moving to inline
-
+// 优化的StyleSelector组件
 const StyleSelector = ({ selectedStyle, onStyleChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  
   const styles = [
-    { id: 'cartoon', label: '卡通' },
-    { id: 'realistic', label: '写实' },
+    { id: 'style1', label: '动漫风格' },
+    { id: 'style2', label: '写实风格' },
+    { id: 'style3', label: '水彩风格' },
+    { id: 'style4', label: '插画风格' },
   ];
 
+  const selectedStyleData = styles.find(style => style.id === selectedStyle) || styles[0];
+  
   return (
     <div className="relative">
-      <select
-        value={selectedStyle}
-        onChange={(e) => onStyleChange(e.target.value)}
-        className="appearance-none bg-white text-gray-700 py-1.5 px-4 pr-8 rounded border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center space-x-2 bg-white border border-gray-200 rounded-md px-3 py-2 text-sm hover:bg-gray-50 transition"
       >
-        {styles.map(style => (
-          <option key={style.id} value={style.id}>
-            {style.label}
-          </option>
-        ))}
-      </select>
-      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
-        <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-          <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+        <div className="w-8 h-8 rounded overflow-hidden">
+          <img 
+            src={styleImages[selectedStyle] || styleImages.style1} 
+            alt={selectedStyleData.label}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              console.error(`风格图像加载失败: ${e.target.src}`);
+              e.target.onerror = null; // 防止无限循环
+              e.target.src = testImage;
+            }}
+          />
+        </div>
+        <span className="font-medium">{selectedStyleData.label}</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points={isOpen ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
         </svg>
-      </div>
+      </button>
+      
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-white rounded-md shadow-lg border border-gray-200 w-64 p-2">
+          <div className="flex flex-col space-y-2">
+            {styles.map(style => (
+              <div 
+                key={style.id} 
+                className={`cursor-pointer rounded-md overflow-hidden transition-all ${
+                  selectedStyle === style.id 
+                    ? 'ring-2 ring-blue-500' 
+                    : 'hover:opacity-90 border border-gray-200'
+                }`}
+                onClick={() => {
+                  onStyleChange(style.id);
+                  setIsOpen(false);
+                }}
+              >
+                <div className="flex items-center">
+                  <div className="w-16 h-12 flex-shrink-0">
+                    <img 
+                      src={styleImages[style.id]} 
+                      alt={style.label}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        console.error(`风格图像加载失败: ${e.target.src}`);
+                        e.target.onerror = null;
+                        e.target.src = testImage;
+                      }}
+                    />
+                  </div>
+                  <div className="flex-grow px-2 py-1">
+                    <div className="text-sm font-medium">{style.label}</div>
+                  </div>
+                  {selectedStyle === style.id && (
+                    <div className="mr-2">
+                      <div className="bg-blue-500 text-white rounded-full p-1 shadow-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 // 设置节点布局的常量
-const NODE_SPACING_X = 220; // 减少节点之间的水平间距，使排列更紧密
 const INITIAL_X_POSITION = 100; // 初始X坐标
-const INITIAL_Y_POSITION = 150; // Y坐标保持固定，增加高度以适应展开的卡片
+const INITIAL_Y_POSITION = 150; // Y坐标保持固定
 const LAYOUT_TRANSITION_DURATION = 300; // 布局过渡动画持续时间(毫秒)
+const NODE_WIDTH = {
+  COLLAPSED: 220,
+  EXPANDED: 320 // 增加展开时的宽度
+};
+const CARD_GAP = 30; // 卡片之间的实际间距（边到边的距离）
 
 // 创建内部组件以使用ReactFlow hooks
 function StoryboardFlow({ initialStoryText, onClose }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedStyle, setSelectedStyle] = useState('realistic');
+  const [selectedStyle, setSelectedStyle] = useState('style1');
   const [showStyleConfirm, setShowStyleConfirm] = useState(false); // For global style confirm modal
-  const [useRealApi, setUseRealApi] = useState(false); // 是否使用真实API
-  const [referenceImageUrl, setReferenceImageUrl] = useState(''); // 风格参考图URL
+  const [useRealApi, setUseRealApi] = useState(true); // 默认使用真实API
+  const [referenceImageUrl, setReferenceImageUrl] = useState(styleUrls.style1); // 风格参考图URL
   const [apiStatus, setApiStatus] = useState('初始化中...'); // API状态信息
   const [lastError, setLastError] = useState(null); // 最后一次错误
   const reactFlowInstance = useReactFlow();
@@ -86,10 +167,15 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       // 输出API配置到控制台
       LiblibAPI.debug.logConfig();
       
+      const testStartTime = new Date();
+      const testStartTimeStr = testStartTime.toLocaleTimeString() + '.' + testStartTime.getMilliseconds();
+      setApiStatus(`API测试开始: ${testStartTimeStr}`);
+      
       // 测试一个简单的API请求
       setApiStatus('开始测试图生图API...');
-      // 使用用户提供的公共URL
-      const imgUrl = "https://static-mp-ba33f5b1-550e-4c1f-8c15-cd4190c3c69b.next.bspapp.com/style1.png";
+      // 使用styleUrls中的URL
+      const imgUrl = styleUrls[selectedStyle] || styleUrls.style1;
+      
       setApiStatus(`参考图URL: ${imgUrl}`);
       
       // 使用指定的提示词
@@ -97,11 +183,19 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       setApiStatus(`使用提示词: ${testPrompt}`);
       
       // 测试API请求
+      const apiCallStartTime = new Date();
+      setApiStatus(`开始API调用: ${apiCallStartTime.toLocaleTimeString() + '.' + apiCallStartTime.getMilliseconds()}`);
+      
       const response = await LiblibAPI.generateImageToImage(
         testPrompt,
         [imgUrl],
         { model: 'pro', aspectRatio: '4:3', imgCount: 1 }
       );
+      
+      const apiCallEndTime = new Date();
+      const apiCallDuration = (apiCallEndTime - apiCallStartTime) / 1000;
+      setApiStatus(`API调用完成，用时: ${apiCallDuration}秒, 时间: ${apiCallEndTime.toLocaleTimeString() + '.' + apiCallEndTime.getMilliseconds()}`);
+      console.log('API测试响应:', JSON.stringify(response));
       
       // 确保我们获取到了正确的任务ID
       if (!response || !response.data || !response.data.generateUuid) {
@@ -112,12 +206,21 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       setApiStatus(`API测试成功！任务ID: ${generateUuid}`);
       
       // 尝试获取结果 - 增加轮询超时时间到120秒
-      setApiStatus('正在获取结果...');
+      const pollingStartTime = new Date();
+      setApiStatus(`开始轮询结果: ${pollingStartTime.toLocaleTimeString() + '.' + pollingStartTime.getMilliseconds()}`);
+      
       const result = await LiblibAPI.pollTaskUntilDone(generateUuid, 2000, 120);
+      
+      const pollingEndTime = new Date();
+      const pollingDuration = (pollingEndTime - pollingStartTime) / 1000;
+      setApiStatus(`轮询完成，用时: ${pollingDuration}秒, 时间: ${pollingEndTime.toLocaleTimeString() + '.' + pollingEndTime.getMilliseconds()}`);
+      console.log('轮询结果:', JSON.stringify(result));
       
       if (result.images && result.images.length > 0) {
         const imageUrl = result.images[0].imageUrl;
-        setApiStatus(`测试成功! 已生成图片: ${imageUrl}`);
+        const testEndTime = new Date();
+        const totalDuration = (testEndTime - testStartTime) / 1000;
+        setApiStatus(`测试成功! 总用时: ${totalDuration}秒，已生成图片: ${imageUrl}`);
         
         // 在调试面板显示生成的图像
         console.log('生成的图像URL:', imageUrl);
@@ -189,12 +292,12 @@ function StoryboardFlow({ initialStoryText, onClose }) {
   // 初始化时获取风格参考图的公网URL
   useEffect(() => {
     // 获取本地风格图片的可公网访问URL
-    const getReferenceImageUrl = () => {
+    const getReferenceImageUrl = async () => {
       try {
-        // 直接使用用户提供的URL
-        const staticUrl = "https://static-mp-ba33f5b1-550e-4c1f-8c15-cd4190c3c69b.next.bspapp.com/style1.png";
+        // 使用styleUrls中的URL
+        const staticUrl = styleUrls[selectedStyle] || styleUrls.style1;
         setReferenceImageUrl(staticUrl);
-        setApiStatus(`风格参考图已设置: 使用静态URL: ${staticUrl.substring(0, 20)}...`);
+        setApiStatus(`风格参考图已设置: ${staticUrl}`);
         console.log("参考图URL设置为:", staticUrl);
       } catch (error) {
         console.error('获取参考图URL失败:', error);
@@ -202,21 +305,27 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         setApiStatus(`错误: 获取参考图URL失败 - ${error.message}`);
         setLastError(error);
         // 使用备用URL
-        setReferenceImageUrl("https://static-mp-ba33f5b1-550e-4c1f-8c15-cd4190c3c69b.next.bspapp.com/style1.png");
+        setReferenceImageUrl(styleUrls.style1);
       }
     };
     
     getReferenceImageUrl();
   }, [selectedStyle]);
 
-  // 监听风格变化，更新参考图 - 目前使用相同的静态URL
+  // 监听风格变化，更新参考图URL
   useEffect(() => {
-    // 当风格改变时，保持相同的参考图URL
-    setApiStatus(`风格已更新为: ${selectedStyle}，继续使用相同的静态参考图`);
+    // 当风格改变时，更新参考图URL
+    const newReferenceUrl = styleUrls[selectedStyle] || styleUrls.style1;
+    setReferenceImageUrl(newReferenceUrl);
+    setApiStatus(`风格已更新为: ${selectedStyle}, 参考图URL: ${newReferenceUrl}`);
   }, [selectedStyle]);
 
-  // 重新排列节点的函数
+  // 重新排列节点的函数 - 完全重写以解决不同状态节点间距问题
   const rearrangeNodes = useCallback((currentNodes) => {
+    if (!currentNodes || currentNodes.length === 0) {
+      return [];
+    }
+    
     // 先按照节点的原始顺序排序
     const sortedNodes = [...currentNodes].sort((a, b) => {
       const aIndex = parseInt(a.data.label.replace('分镜 ', ''));
@@ -224,74 +333,65 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       return aIndex - bIndex;
     });
 
-    // 定义节点宽度和高度常量 - 使用固定宽度避免计算误差
-    const COLLAPSED_WIDTH = 208;
-    const EXPANDED_WIDTH = 256;
-    const NODE_MARGIN = 60; // 大幅增加节点间距，确保即使展开也不会重叠
-
-    // 计算每个节点的位置
+    // 使用固定间隔布局，保证卡片之间的间隙一致
     let currentX = INITIAL_X_POSITION;
 
-    return sortedNodes.map((node, idx) => {
-      // 固定使用原始Y坐标或初始Y坐标，防止漂移
-      // 如果是新节点或者没有位置信息，使用初始Y值
-      const yPosition = (node.position && node.position.y) || INITIAL_Y_POSITION;
-      
+    // 应用计算出的位置
+    const updatedNodes = sortedNodes.map((node, idx) => {
       // 获取节点状态，判断是否展开
-      const nodeState = nodeStatesRef.current[node.id];
-      const isExpanded = nodeState?.isExpanded || false;
-      const isEditing = nodeState?.state === 'editing' || nodeState?.state === 'imageEditing';
+      const nodeState = nodeStatesRef.current[node.id] || {
+        state: 'default',
+        isExpanded: false
+      };
+      const isExpanded = nodeState.isExpanded || 
+                       nodeState.state === 'editing' || 
+                       nodeState.state === 'imageEditing' ||
+                       nodeState.state === 'generating';
       
       // 当前节点的宽度
-      const nodeWidth = isExpanded || isEditing ? EXPANDED_WIDTH : COLLAPSED_WIDTH;
+      const nodeWidth = isExpanded ? NODE_WIDTH.EXPANDED : NODE_WIDTH.COLLAPSED;
+      
+      // 保持原有的Y坐标或使用初始值
+      const yPosition = (node.position && node.position.y) || INITIAL_Y_POSITION;
       
       // 保存当前节点的X坐标
       const xPosition = currentX;
       
-      // 使用固定间距，不再根据状态动态调整
-      // 所有节点使用相同的大间距，确保展开后也不会重叠
-      currentX += nodeWidth + NODE_MARGIN;
-      
-      // 为每个节点添加唯一的key，确保React能正确识别更新
-      const uniqueKey = `${node.id}-${isExpanded ? 'expanded' : 'collapsed'}-${idx}`;
+      // 更新下一个节点的X坐标，固定间隔为CARD_GAP
+      currentX = xPosition + nodeWidth + CARD_GAP;
       
       return {
         ...node,
         position: {
           x: xPosition,
-          y: yPosition // 保持Y坐标不变
+          y: yPosition
         },
         data: {
           ...node.data,
           label: `分镜 ${idx + 1}`,
-          nodeIndex: idx // 添加索引信息，方便调试
-        },
-        // 完全移除动画过渡效果，避免任何可能的位置偏移
-        style: {
-          ...node.style,
-          // 不使用CSS transition，避免动画导致的位置偏移
+          nodeIndex: idx,
+          styleName: node.data.styleName || selectedStyle
         },
         // 添加布局调试信息
         layoutInfo: {
-          isExpanded,
+          isExpanded: isExpanded,
           width: nodeWidth,
-          xPosition,
-          spacing: NODE_MARGIN
+          xPosition: xPosition,
+          gap: CARD_GAP
         }
       };
     });
-  }, []);
+    
+    return updatedNodes;
+  }, [selectedStyle]);
 
   // 监听节点状态变化并重新排列
   const handleNodeStateChange = useCallback((nodeId, state, isExpanded) => {
-    console.log(`处理节点状态变化: 节点=${nodeId}, 状态=${state}, 展开=${isExpanded}`);
-    
-    // 获取当前节点的精确位置
+    // 记录当前节点的精确位置
     let nodePosition = {x: INITIAL_X_POSITION, y: INITIAL_Y_POSITION};
     const existingNode = nodes.find(n => n.id === nodeId);
     if (existingNode && existingNode.position) {
       nodePosition = {...existingNode.position};
-      console.log(`节点${nodeId}当前位置:`, nodePosition);
     }
     
     // 更新节点状态引用，精确记录位置
@@ -301,141 +401,15 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       position: nodePosition // 记录完整位置信息
     };
     
-    // 记录当前节点状态，用于调试
-    console.log("当前所有节点状态:", nodeStatesRef.current);
-    
     // 当节点展开或折叠时，重新排列所有节点
     setNodes(currentNodes => {
       // 标记为布局更新，避免不必要的视图调整
       skipViewUpdateRef.current = true;
       
-      // 先重新排列所有节点，获取新的X坐标
-      const tempArranged = rearrangeNodes(currentNodes);
-      
-      // 然后为每个节点应用正确的Y坐标
-      const finalNodes = tempArranged.map(node => {
-        // 获取节点的状态记录
-        const nodeState = nodeStatesRef.current[node.id];
-        
-        // 如果有记录的位置，使用记录的Y坐标
-        if (nodeState && nodeState.position) {
-          return {
-            ...node,
-            position: {
-              x: node.position.x, // 使用重新计算的X坐标
-              y: nodeState.position.y // 使用记录的Y坐标
-            }
-          };
-        }
-        return node;
-      });
-      
-      // 不再自动调整视图，根据用户要求
-      
-      return finalNodes;
+      // 重新排列所有节点
+      return rearrangeNodes(currentNodes);
     });
   }, [rearrangeNodes, nodes]);
-
-  // 将handleAddNode从useRef中移出，作为独立的useCallback函数
-  const handleAddNode = useCallback((nodeId, position) => {
-    console.log(`处理添加分镜: ${position} 到节点 ${nodeId}`);
-    
-    const newId = `frame-${Date.now()}`;
-    
-    setNodes(nds => {
-      let nodeIndex = nds.findIndex(node => node.id === nodeId);
-      
-      if (nodeIndex === -1) {
-        console.error(`未找到ID为${nodeId}的节点，将添加到末尾`);
-        nodeIndex = nds.length - 1; // 设置为最后一个节点的索引，以便添加到右侧
-        position = 'right'; // 强制添加到末尾（右侧）
-      }
-      
-      const insertIndex = position === 'right' ? nodeIndex + 1 : nodeIndex;
-      console.log(`将在索引 ${insertIndex} 处插入新节点`);
-      
-      // 确定新节点的Y坐标 - 使用参考节点的Y坐标或默认值
-      let yPosition = INITIAL_Y_POSITION;
-      const referenceNode = nds[nodeIndex];
-      if (referenceNode && referenceNode.position) {
-        yPosition = referenceNode.position.y;
-      }
-      
-      // 创建新节点的函数，确保每次都创建新的引用
-      const createNodeData = (id, label) => ({
-        id,
-        label,
-        text: `新分镜`,
-        image: null,
-        imagePrompt: '',
-        onDeleteNode: nodeHandlersRef.current.handleDeleteNode,
-        onRegenerateImage: nodeHandlersRef.current.handleRegenerateImage,
-        onUpdateNode: nodeHandlersRef.current.handleUpdateNode,
-        onGenerateImage: nodeHandlersRef.current.handleGenerateImage,
-        onStateChange: handleNodeStateChange,
-      });
-      
-      // 创建新节点
-      const newNode = {
-        id: newId,
-        type: 'story',
-        position: { 
-          x: INITIAL_X_POSITION, // 临时位置，稍后调整
-          y: yPosition // 使用参考节点的Y坐标，保持水平对齐
-        },
-        data: createNodeData(newId, `分镜 ${insertIndex + 1}`)
-      };
-      
-      // 记录新节点的完整位置
-      nodeStatesRef.current[newId] = {
-        state: 'default',
-        isExpanded: false,
-        position: {x: INITIAL_X_POSITION, y: yPosition}
-      };
-      
-      // 插入新节点
-      const newNodes = [
-        ...nds.slice(0, insertIndex),
-        newNode,
-        ...nds.slice(insertIndex)
-      ];
-      
-      console.log(`更新后节点数量: ${newNodes.length}`);
-      
-      // 更新所有节点的数据，确保onAddNode函数正确设置（避免闭包过时）
-      const updatedNodes = newNodes.map(node => ({
-        ...node,
-        data: {
-          ...node.data,
-          onAddNode: (id, pos) => {
-            console.log(`从节点调用添加: ${pos} 到 ${id}`);
-            handleAddNode(id, pos);
-          }
-        }
-      }));
-      
-      // 重新排列所有节点，确保保持各自的Y坐标
-      const tempArranged = rearrangeNodes(updatedNodes);
-      
-      return tempArranged.map(n => {
-        const nodeState = nodeStatesRef.current[n.id];
-        if (nodeState && nodeState.position) {
-          return {
-            ...n,
-            position: {
-              x: n.position.x, // 使用重新计算的X坐标
-              y: nodeState.position.y // 使用记录的Y坐标
-            }
-          };
-        }
-        return n;
-      });
-    });
-    
-    // 不再自动调整视图，根据用户要求
-    // 可以添加日志记录新节点创建完成
-    console.log(`新节点 ${newId} 创建完成`);
-  }, [rearrangeNodes, handleNodeStateChange, reactFlowInstance, nodes]); // 添加nodes依赖，确保能找到最新节点
 
   // 处理节点拖动结束事件
   const handleNodeDragStop = useCallback((event, node) => {
@@ -452,53 +426,182 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       };
     }
     
-    // 更新节点位置但不重新排列
+    // 更新节点位置但不重新排列X坐标，仅保持Y坐标的变化
     setNodes(nds => {
-      // 先记录所有节点当前位置
-      nds.forEach(n => {
-        if (!nodeStatesRef.current[n.id]) {
-          nodeStatesRef.current[n.id] = {
-            state: 'default',
-            isExpanded: false,
-            position: {...n.position}
-          };
-        } else if (!nodeStatesRef.current[n.id].position) {
-          nodeStatesRef.current[n.id].position = {...n.position};
-        }
-      });
+      // 先获取当前被拖动的节点
+      const draggedNode = nds.find(n => n.id === node.id);
+      if (!draggedNode) return nds;
       
-      // 更新当前拖动节点的位置
+      // 仅更新被拖动节点的Y坐标
       const updatedNodes = nds.map(n => {
         if (n.id === node.id) {
           return {
             ...n,
-            position: {...node.position} // 保留完整位置信息
-          };
-        }
-        return n;
-      });
-      
-      // 重新排列节点，但保留每个节点的Y坐标
-      const tempArranged = rearrangeNodes(updatedNodes);
-      
-      // 应用记录的Y坐标
-      return tempArranged.map(n => {
-        const nodeState = nodeStatesRef.current[n.id];
-        if (nodeState && nodeState.position) {
-          return {
-            ...n,
             position: {
-              x: n.position.x, // 使用重新计算的X坐标
-              y: nodeState.position.y // 使用记录的Y坐标
+              ...n.position,
+              y: node.position.y // 只更新Y坐标
             }
           };
         }
         return n;
       });
+      
+      // 在下一帧中重新应用X坐标排列，确保布局一致
+      requestAnimationFrame(() => {
+        setNodes(currentNodes => rearrangeNodes(currentNodes));
+      });
+      
+      return updatedNodes;
     });
   }, [rearrangeNodes]);
 
-  // 导入API服务
+  // 将handleAddNode从useRef中移出，作为独立的useCallback函数
+  const handleAddNode = useCallback((nodeId, position) => {
+    // 移除日志输出
+    // console.log(`处理添加分镜: ${position} 到节点 ${nodeId}`);
+    
+    const newId = `frame-${Date.now()}`;
+    
+    setNodes(nds => {
+      let nodeIndex = nds.findIndex(node => node.id === nodeId);
+      
+      if (nodeIndex === -1) {
+        // 移除日志输出
+        // console.error(`未找到ID为${nodeId}的节点，将添加到末尾`);
+        nodeIndex = nds.length - 1; // 设置为最后一个节点的索引，以便添加到右侧
+        position = 'right'; // 强制添加到末尾（右侧）
+      }
+      
+      const insertIndex = position === 'right' ? nodeIndex + 1 : nodeIndex;
+      // 移除日志输出
+      // console.log(`将在索引 ${insertIndex} 处插入新节点`);
+      
+      // 确定新节点的Y坐标 - 使用参考节点的Y坐标或默认值
+      let yPosition = INITIAL_Y_POSITION;
+      const referenceNode = nds[nodeIndex];
+      if (referenceNode && referenceNode.position) {
+        yPosition = referenceNode.position.y;
+      }
+      
+      // 创建新节点的函数，确保每次都创建新的引用
+      const createNodeData = (id, label) => ({
+        id,
+        label,
+        text: `新分镜`,
+        image: null,
+        imagePrompt: '',
+        styleName: selectedStyle, // 使用当前选择的风格
+        onDeleteNode: (nodeId) => {
+          console.log('直接从新节点调用删除:', nodeId);
+          nodeHandlersRef.current.handleDeleteNode(nodeId);
+        },
+        onRegenerateImage: nodeHandlersRef.current.handleRegenerateImage,
+        onUpdateNode: nodeHandlersRef.current.handleUpdateNode,
+        onGenerateImage: nodeHandlersRef.current.handleGenerateImage,
+        onStateChange: handleNodeStateChange,
+        onAddNode: handleAddNode,
+        referenceImageUrl: referenceImageUrl // 添加风格参考图URL
+      });
+      
+      // 创建新节点 - 初始位置不重要，会在rearrangeNodes中重新计算
+      const newNode = {
+        id: newId,
+        type: 'story',
+        position: { 
+          x: INITIAL_X_POSITION, 
+          y: yPosition 
+        },
+        data: createNodeData(newId, `分镜 ${insertIndex + 1}`)
+      };
+      
+      // 记录新节点的状态
+      nodeStatesRef.current[newId] = {
+        state: 'default',
+        isExpanded: false,
+        position: {x: INITIAL_X_POSITION, y: yPosition}
+      };
+      
+      // 插入新节点
+      const newNodes = [
+        ...nds.slice(0, insertIndex),
+        newNode,
+        ...nds.slice(insertIndex)
+      ];
+      
+      // 移除日志输出
+      // console.log(`更新后节点数量: ${newNodes.length}`);
+      
+      // 重新排列所有节点
+      return rearrangeNodes(newNodes);
+    });
+
+    // 添加节点后适当调整视图
+    setTimeout(() => {
+      if (reactFlowInstance) {
+        reactFlowInstance.fitView({ padding: 0.2 });
+      }
+    }, 100);
+  }, [rearrangeNodes, handleNodeStateChange, selectedStyle, referenceImageUrl, reactFlowInstance]);
+
+  const handleAddFrame = () => {
+    // 移除日志输出
+    // console.log("点击了顶部添加分镜按钮");
+    const newId = `frame-${Date.now()}`;
+    
+    setNodes(nds => {
+      // 创建节点数据的函数
+      const createNodeData = (id, label) => ({
+        id,
+        label,
+        text: `新分镜`,
+        image: null,
+        imagePrompt: '',
+        styleName: selectedStyle, // 使用当前选择的风格
+        onDeleteNode: (nodeId) => {
+          console.log('直接从顶部添加的节点调用删除:', nodeId);
+          nodeHandlersRef.current.handleDeleteNode(nodeId);
+        },
+        onRegenerateImage: nodeHandlersRef.current.handleRegenerateImage,
+        onUpdateNode: nodeHandlersRef.current.handleUpdateNode,
+        onGenerateImage: nodeHandlersRef.current.handleGenerateImage,
+        onStateChange: handleNodeStateChange,
+        onAddNode: handleAddNode,
+        referenceImageUrl: referenceImageUrl // 添加风格参考图URL
+      });
+      
+      // 创建新节点 - 初始位置不重要，会在rearrangeNodes中重新计算
+      const newNode = {
+        id: newId,
+        type: 'story',
+        position: { 
+          x: INITIAL_X_POSITION,
+          y: INITIAL_Y_POSITION 
+        },
+        data: createNodeData(newId, `分镜 ${nds.length + 1}`)
+      };
+      
+      // 记录新节点状态
+      nodeStatesRef.current[newId] = {
+            state: 'default',
+            isExpanded: false,
+        position: {x: INITIAL_X_POSITION, y: INITIAL_Y_POSITION}
+      };
+      
+      const newNodes = [...nds, newNode];
+      
+      // 重新排列所有节点
+      return rearrangeNodes(newNodes);
+    });
+    
+    // 添加节点后适当调整视图
+    setTimeout(() => {
+      if (reactFlowInstance) {
+        reactFlowInstance.fitView({ padding: 0.2 });
+      }
+    }, 100);
+  };
+
+  // 修改节点删除处理函数
   const nodeHandlersRef = useRef({
     // 生成提示词，根据不同场景使用不同格式
     generatePrompt: (text, isEdit = false, currentImage = null) => {
@@ -511,27 +614,23 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       }
     },
     handleDeleteNode: (nodeId) => {
+      console.log('正在删除节点:', nodeId);
+      if (!nodeId) {
+        console.error('删除节点时未提供nodeId');
+        return;
+      }
+
       setNodes((nds) => {
+        console.log(`尝试删除节点 ${nodeId}, 当前节点数:`, nds.length);
         // 找到被删除节点的索引
         const newNodes = nds.filter(node => node.id !== nodeId);
+        console.log('过滤后节点数:', newNodes.length);
         
         // 删除节点状态记录
         delete nodeStatesRef.current[nodeId];
         
-        // 更新剩余节点的数据，确保onAddNode最新
-        const updatedNodes = newNodes.map(node => ({
-          ...node,
-          data: {
-            ...node.data,
-            onAddNode: (id, pos) => {
-              console.log(`从节点调用添加: ${pos} 到 ${id}`);
-              handleAddNode(id, pos);
-            }
-          }
-        }));
-        
         // 重新排列所有节点
-        return rearrangeNodes(updatedNodes);
+        return rearrangeNodes(newNodes);
       });
     },
     handleRegenerateImage: async (nodeId, prompt, isEdit = false) => {
@@ -581,6 +680,14 @@ function StoryboardFlow({ initialStoryText, onClose }) {
               }
             );
             
+            // 检查是否有错误码和错误消息
+            if (response && response.code && response.code !== 0) {
+              const errorMsg = response.msg || '未知错误';
+              console.error(`[StoryboardTest] API错误: 错误码 ${response.code}, 消息: ${errorMsg}`);
+              setApiStatus(`API错误: ${errorMsg} (${response.code})`);
+              throw new Error(`API错误: ${errorMsg} (${response.code})`);
+            }
+            
             // 确保我们获取到了正确的任务ID
             if (!response || !response.data || !response.data.generateUuid) {
               throw new Error('API响应缺少generateUuid');
@@ -620,6 +727,24 @@ function StoryboardFlow({ initialStoryText, onClose }) {
           } catch (error) {
             console.error('API调用失败:', error);
             setApiStatus(`API错误: ${error.message}`);
+            
+            // 显示具体的错误消息给用户
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === nodeId) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      isLoading: false,
+                      error: `生成失败: ${error.message}`
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+            
             throw error; // 向上传递错误
           }
         } else {
@@ -660,7 +785,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                 data: {
                   ...node.data,
                   isLoading: false,
-                  error: '图像生成失败'
+                  error: `图像生成失败: ${error.message}`
                 },
               };
             }
@@ -692,7 +817,9 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     // 生成单个图像
     handleGenerateImage: async (nodeId, prompt) => {
       try {
-        console.log(`开始生成图像, nodeId: ${nodeId}, 使用API: ${useRealApi}`);
+        const startTime = new Date();
+        const startTimeStr = startTime.toLocaleTimeString() + '.' + startTime.getMilliseconds();
+        console.log(`[StoryboardTest] 开始生成图像, nodeId: ${nodeId}, 时间: ${startTimeStr}, 使用API: ${useRealApi}`);
         // 设置节点状态为加载中
         setNodes((nds) =>
           nds.map((node) => {
@@ -723,9 +850,11 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         // 根据开关状态决定使用API还是测试图像
         if (useRealApi) {
           try {
-            console.log(`使用API生成图像, 参考图: ${referenceImageUrl}`);
+            console.log(`[StoryboardTest] 使用API生成图像, 参考图: ${referenceImageUrl}`);
             // 使用图生图API而不是文生图API
-            setApiStatus('调用图生图API...');
+            const apiCallStartTime = new Date();
+            setApiStatus(`调用图生图API, 时间: ${apiCallStartTime.toLocaleTimeString() + '.' + apiCallStartTime.getMilliseconds()}`);
+            
             const response = await LiblibAPI.generateImageToImage(
               finalPrompt, 
               [referenceImageUrl], // 使用上传后的风格参考图URL
@@ -735,6 +864,19 @@ function StoryboardFlow({ initialStoryText, onClose }) {
               }
             );
             
+            const apiCallEndTime = new Date();
+            const apiCallDuration = (apiCallEndTime - apiCallStartTime) / 1000;
+            setApiStatus(`API调用完成，用时: ${apiCallDuration}秒, 时间: ${apiCallEndTime.toLocaleTimeString() + '.' + apiCallEndTime.getMilliseconds()}`);
+            console.log('API响应:', JSON.stringify(response));
+            
+            // 检查是否有错误码和错误消息
+            if (response && response.code && response.code !== 0) {
+              const errorMsg = response.msg || '未知错误';
+              console.error(`[StoryboardTest] API错误: 错误码 ${response.code}, 消息: ${errorMsg}`);
+              setApiStatus(`API错误: ${errorMsg} (${response.code})`);
+              throw new Error(`API错误: ${errorMsg} (${response.code})`);
+            }
+            
             // 确保我们获取到了正确的任务ID
             if (!response || !response.data || !response.data.generateUuid) {
               throw new Error('API响应缺少generateUuid');
@@ -742,14 +884,50 @@ function StoryboardFlow({ initialStoryText, onClose }) {
 
             const generateUuid = response.data.generateUuid;
             console.log(`API调用成功，任务ID: ${generateUuid}`);
-            setApiStatus(`等待结果: 任务ID ${generateUuid}`);
+            
+            const pollingStartTime = new Date();
+            setApiStatus(`等待结果: 任务ID ${generateUuid}, 时间: ${pollingStartTime.toLocaleTimeString() + '.' + pollingStartTime.getMilliseconds()}`);
+            
             const result = await LiblibAPI.pollTaskUntilDone(generateUuid);
+            
+            const pollingEndTime = new Date();
+            const pollingDuration = (pollingEndTime - pollingStartTime) / 1000;
+            setApiStatus(`轮询完成，用时: ${pollingDuration}秒, 时间: ${pollingEndTime.toLocaleTimeString() + '.' + pollingEndTime.getMilliseconds()}`);
+            console.log('轮询结果:', JSON.stringify(result));
             
             // 获取生成的图像URL
             if (result.images && result.images.length > 0) {
               const imageUrl = result.images[0].imageUrl;
-              console.log(`获取到图像URL: ${imageUrl}`);
-              setApiStatus('图像生成成功');
+              const endTime = new Date();
+              const totalDuration = (endTime - startTime) / 1000;
+              console.log(`获取到图像URL: ${imageUrl}, 总用时: ${totalDuration}秒`);
+              setApiStatus(`图像生成成功，总用时: ${totalDuration}秒`);
+              
+              // 创建图像对象预加载
+              const loadStartTime = new Date();
+              console.log(`开始加载图像: ${loadStartTime.toLocaleTimeString() + '.' + loadStartTime.getMilliseconds()}`);
+              
+              try {
+                await new Promise((resolve, reject) => {
+                  const img = new Image();
+                  img.onload = () => {
+                    const loadEndTime = new Date();
+                    const loadDuration = (loadEndTime - loadStartTime) / 1000;
+                    console.log(`图像加载成功，用时: ${loadDuration}秒, 时间: ${loadEndTime.toLocaleTimeString() + '.' + loadEndTime.getMilliseconds()}`);
+                    resolve();
+                  };
+                  img.onerror = () => {
+                    console.warn(`图像加载失败: ${imageUrl}`);
+                    resolve(); // 仍然继续，不中断流程
+                  };
+                  img.src = imageUrl;
+                  
+                  // 设置超时，防止无限等待
+                  setTimeout(resolve, 5000);
+                });
+              } catch (loadError) {
+                console.warn('图像预加载错误:', loadError);
+              }
               
               // 更新节点状态
       setTimeout(() => {
@@ -777,6 +955,24 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             console.error('API调用失败:', error);
             setLastError(error);
             setApiStatus(`API错误: ${error.message}`);
+            
+            // 显示具体的错误消息给用户
+            setNodes((nds) =>
+              nds.map((node) => {
+                if (node.id === nodeId) {
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      isLoading: false,
+                      error: `生成失败: ${error.message}`
+                    },
+                  };
+                }
+                return node;
+              })
+            );
+            
             throw error; // 向上传递错误
           }
         } else {
@@ -819,7 +1015,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                 data: {
                   ...node.data,
                   isLoading: false,
-                  error: '图像生成失败'
+                  error: `图像生成失败: ${error.message}`
                 },
               };
             }
@@ -867,6 +1063,47 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     // 从nodeHandlersRef中删除handleAddNode函数
   });
 
+  // 确保nodeHandlersRef在初始化后不再变化
+  useEffect(() => {
+    // 仅在组件初始化时设置一次处理函数
+    nodeHandlersRef.current = {
+      // 生成提示词，根据不同场景使用不同格式
+      generatePrompt: (text, isEdit = false, currentImage = null) => {
+        if (isEdit && currentImage) {
+          // 编辑已有图像的提示词
+          return `${text}`;
+        } else {
+          // 基于风格图生成初始图像的提示词
+          return `不要参考图中的人物只参考图像的风格，为我生成故事板分镜画面：${text}`;
+        }
+      },
+      handleDeleteNode: (nodeId) => {
+        console.log('正在删除节点:', nodeId);
+        if (!nodeId) {
+          console.error('删除节点时未提供nodeId');
+          return;
+        }
+
+        setNodes((nds) => {
+          console.log(`尝试删除节点 ${nodeId}, 当前节点数:`, nds.length);
+          // 找到被删除节点的索引
+          const newNodes = nds.filter(node => node.id !== nodeId);
+          console.log('过滤后节点数:', newNodes.length);
+          
+          // 删除节点状态记录
+          delete nodeStatesRef.current[nodeId];
+          
+          // 重新排列所有节点
+          return rearrangeNodes(newNodes);
+        });
+      },
+      // 保持其他处理函数不变
+      handleRegenerateImage: nodeHandlersRef.current.handleRegenerateImage,
+      handleUpdateNode: nodeHandlersRef.current.handleUpdateNode,
+      handleGenerateImage: nodeHandlersRef.current.handleGenerateImage,
+    };
+  }, [rearrangeNodes, setNodes]);
+
   const getStorySegments = useCallback((initialText) => {
     // 这里是模拟的故事情节，实际应用中应该从后端API获取
     const segments = [
@@ -880,64 +1117,6 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     // 实际场景会根据初始文本动态生成
     return segments;
   }, []);
-
-  const handleAddFrame = () => {
-    console.log("点击了顶部添加分镜按钮");
-    const newId = `frame-${Date.now()}`;
-    
-    setNodes(nds => {
-      const nodeCount = nds.length;
-      
-      // 创建节点数据的函数
-      const createNodeData = (id, label) => ({
-        id,
-        label,
-        text: `新分镜`,
-        image: null,
-        imagePrompt: '',
-        onDeleteNode: nodeHandlersRef.current.handleDeleteNode,
-        onRegenerateImage: nodeHandlersRef.current.handleRegenerateImage,
-        onUpdateNode: nodeHandlersRef.current.handleUpdateNode,
-        onGenerateImage: nodeHandlersRef.current.handleGenerateImage,
-        onStateChange: handleNodeStateChange,
-      });
-      
-      // 创建新节点
-      const newNode = {
-        id: newId,
-        type: 'story',
-        position: { 
-          x: INITIAL_X_POSITION + nodeCount * NODE_SPACING_X, 
-          y: INITIAL_Y_POSITION 
-        },
-        data: createNodeData(newId, `分镜 ${nodeCount + 1}`)
-      };
-      
-      const newNodes = [...nds, newNode];
-      
-      // 更新所有节点的数据，确保onAddNode函数正确设置
-      const updatedNodes = newNodes.map(node => ({
-        ...node,
-        data: {
-          ...node.data,
-          onAddNode: (id, pos) => {
-            console.log(`从添加的节点调用添加: ${pos} 到 ${id}`);
-            handleAddNode(id, pos);
-          }
-        }
-      }));
-      
-      // 重新排列所有节点
-      return rearrangeNodes(updatedNodes);
-    });
-    
-    // 仅在添加新节点时调整视图
-    setTimeout(() => {
-      if (reactFlowInstance) {
-        reactFlowInstance.fitView({ padding: 0.2 });
-      }
-    }, 100);
-  };
 
   const handleBatchGenerate = async () => {
     try {
@@ -984,6 +1163,14 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                   aspectRatio: liblibConfig.defaultAspectRatio
                 }
               );
+              
+              // 检查是否有错误码和错误消息
+              if (response && response.code && response.code !== 0) {
+                const errorMsg = response.msg || '未知错误';
+                console.error(`[StoryboardTest] API错误: 错误码 ${response.code}, 消息: ${errorMsg}`);
+                setApiStatus(`API错误: ${errorMsg} (${response.code})`);
+                throw new Error(`API错误: ${errorMsg} (${response.code})`);
+              }
               
               // 确保我们获取到了正确的任务ID
               if (!response || !response.data || !response.data.generateUuid) {
@@ -1099,6 +1286,10 @@ function StoryboardFlow({ initialStoryText, onClose }) {
   const handleStyleChange = (style) => {
     setSelectedStyle(style);
     setShowStyleConfirm(true);
+    // 立即更新参考图URL，不等待确认
+    const newReferenceUrl = styleUrls[style] || styleUrls.style1;
+    setReferenceImageUrl(newReferenceUrl);
+    console.log(`已选择风格: ${style}, 参考图URL: ${newReferenceUrl}`);
   };
 
   const confirmStyleChange = async () => {
@@ -1106,14 +1297,24 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     setShowStyleConfirm(false);
       setApiStatus('开始更新风格...');
       
-      // 使用静态URL
-      const staticUrl = "https://static-mp-ba33f5b1-550e-4c1f-8c15-cd4190c3c69b.next.bspapp.com/style1.png";
-      setReferenceImageUrl(staticUrl);
-      setApiStatus(`已更新风格为: ${selectedStyle}, 继续使用静态参考图URL`);
+      // 使用公网风格图片URL
+      const newReferenceUrl = styleUrls[selectedStyle] || styleUrls.style1;
+      console.log(`确认更新风格为: ${selectedStyle}, 参考图URL: ${newReferenceUrl}`);
       
       // 批量重新生成所有已有图像的节点
       const nodesWithImages = nodes.filter(node => node.data.image);
       setApiStatus(`开始更新 ${nodesWithImages.length} 个图像节点`);
+      
+      // 先更新所有节点的风格名称，确保后续生成使用正确的风格
+      setNodes((nds) =>
+        nds.map((n) => ({
+          ...n,
+          data: {
+            ...n.data,
+            styleName: selectedStyle // 更新所有节点的风格名称
+          },
+        }))
+      );
       
       for (let i = 0; i < nodesWithImages.length; i++) {
         const node = nodesWithImages[i];
@@ -1129,6 +1330,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                 data: {
                   ...n.data,
                   isLoading: true,
+                  styleName: selectedStyle, // 更新风格名称
                 },
               };
             }
@@ -1138,29 +1340,21 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         
         try {
           if (useRealApi) {
-            // 使用图生图API
-            setApiStatus(`调用API: 节点 ${i+1}/${nodesWithImages.length}`);
-            const response = await LiblibAPI.generateImageToImage(
+            // 调用 FalAI 的图生图 API，直接使用当前图像URL
+            setApiStatus(`调用 FalAI API: 节点 ${i+1}/${nodesWithImages.length}`);
+            const response = await FalAI.generateImageToImage(
               prompt,
-              [node.data.image || staticUrl], // 使用当前图像或参考图像
-              {
-                model: selectedStyle === 'realistic' ? 'max' : 'pro',
-                aspectRatio: liblibConfig.defaultAspectRatio
-              }
+              [node.data.image || newReferenceUrl], // 使用当前图像URL或风格URL
+              false, // 不使用示例图像
+              selectedStyle // 传递风格名称
             );
             
-            // 确保我们获取到了正确的任务ID
-            if (!response || !response.data || !response.data.generateUuid) {
-              throw new Error('API响应缺少generateUuid');
+            // 从响应中获取图像 URL
+            if (!response || !response.data || !response.data.images) {
+              throw new Error('未获取到生成的图像');
             }
             
-            const generateUuid = response.data.generateUuid;
-            setApiStatus(`等待结果: 任务ID ${generateUuid}`);
-            const result = await LiblibAPI.pollTaskUntilDone(generateUuid);
-            
-            // 获取生成的图像URL
-            if (result.images && result.images.length > 0) {
-              const imageUrl = result.images[0].imageUrl;
+            const imageUrl = response.data.images[0];
               setApiStatus(`成功: 节点 ${i+1}/${nodesWithImages.length} 图像已更新`);
               
               // 更新节点状态
@@ -1172,18 +1366,16 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                       data: {
                         ...n.data,
                         image: imageUrl,
-                        imagePrompt: prompt,
+                      imagePrompt: node.data.text,
                         isLoading: false,
-                        error: null
+                      error: null,
+                      styleName: selectedStyle // 更新风格名称
                       },
                     };
                   }
                   return n;
                 })
               );
-            } else {
-              throw new Error('未获取到生成的图像');
-            }
           } else {
             // 使用测试图像模拟API
             setApiStatus(`模拟API: 节点 ${i+1}/${nodesWithImages.length}`);
@@ -1199,7 +1391,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                       image: testImage,
                       imagePrompt: prompt,
                       isLoading: false,
-                      error: null
+                      error: null,
+                      styleName: selectedStyle // 更新风格名称
                     },
                   };
                 }
@@ -1222,7 +1415,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                   data: {
                     ...n.data,
                     isLoading: false,
-                    error: '风格更新失败'
+                    error: '风格更新失败',
+                    styleName: selectedStyle // 仍然更新风格名称
                   },
                 };
               }
@@ -1267,6 +1461,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     }
   }, [nodes, loading]);
 
+  // 初始化时设置节点处理函数
   useEffect(() => {
     if (loading) {
       const segments = getStorySegments(initialStoryText);
@@ -1278,40 +1473,41 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         text,
         image: null,
         imagePrompt: '',
-        onDeleteNode: nodeHandlersRef.current.handleDeleteNode,
+        styleName: selectedStyle,
+        onDeleteNode: (nodeId) => {
+          console.log('直接从节点调用删除:', nodeId);
+          nodeHandlersRef.current.handleDeleteNode(nodeId);
+        },
         onRegenerateImage: nodeHandlersRef.current.handleRegenerateImage,
         onUpdateNode: nodeHandlersRef.current.handleUpdateNode,
         onGenerateImage: nodeHandlersRef.current.handleGenerateImage,
         onStateChange: handleNodeStateChange,
+        onAddNode: handleAddNode,
+        referenceImageUrl: referenceImageUrl // 添加风格参考图URL
       });
       
       // 创建初始节点
       const initialNodes = segments.map((seg, i) => ({
         id: `frame-${i}`,
         type: 'story',
-        position: { x: INITIAL_X_POSITION + i * NODE_SPACING_X, y: INITIAL_Y_POSITION },
+        position: { x: INITIAL_X_POSITION + i * (NODE_WIDTH.COLLAPSED + CARD_GAP), y: INITIAL_Y_POSITION },
         data: createNodeData(`frame-${i}`, `分镜 ${i + 1}`, seg, i)
       }));
       
-      // 更新节点数据，确保onAddNode函数正确设置
-      const nodesWithAddFunction = initialNodes.map(node => ({
-        ...node,
-        data: {
-          ...node.data,
-          onAddNode: (id, pos) => {
-            console.log(`从初始节点调用添加: ${pos} 到 ${id}`);
-            handleAddNode(id, pos);
-          }
-        }
-      }));
-
-      setNodes(nodesWithAddFunction);
+      setNodes(initialNodes);
       // 不再设置边缘连接
       setEdges([]);
 
       setLoading(false);
+      
+      // 初始加载完成后，适当调整视图
+      setTimeout(() => {
+        if (reactFlowInstance) {
+          reactFlowInstance.fitView({ padding: 0.1, includeHiddenNodes: true });
     }
-  }, [initialStoryText, loading, setNodes, setEdges, getStorySegments, handleNodeStateChange, handleAddNode]);
+      }, 300);
+    }
+  }, [initialStoryText, loading, setNodes, setEdges, getStorySegments, handleNodeStateChange, handleAddNode, selectedStyle, referenceImageUrl, reactFlowInstance]);
 
   return (
     <motion.div
@@ -1321,8 +1517,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       exit={{ opacity: 0 }}
       style={{ background: '#F4F5F7' }}
     >
-      {/* Top nav */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200 h-[50px] flex items-center justify-between px-4 z-10">
+      {/* Top nav - 简化后只保留返回按钮和风格选择器 */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 h-[60px] flex items-center justify-between px-4 z-10">
         <button
           onClick={onClose}
           className="border border-[#007BFF] text-[#007BFF] px-4 py-1.5 rounded text-sm font-medium flex items-center hover:bg-blue-50 transition-colors"
@@ -1332,47 +1528,17 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         </button>
         
         <div className="flex items-center space-x-3">
-          <button className="border border-[#28A745] text-[#28A745] px-4 py-1.5 rounded text-sm font-medium flex items-center hover:bg-green-50 transition-colors">
-            <Download size={16} className="mr-1" />
-            保存/导出
-          </button>
-          
-          <button 
-            className="border border-[#6C757D] text-[#6C757D] px-4 py-1.5 rounded text-sm font-medium flex items-center hover:bg-gray-50 transition-colors"
+          <button
             onClick={handleAddFrame}
+            className="flex items-center space-x-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-md text-sm font-medium"
           >
-            <Plus size={16} className="mr-1" />
+            <Plus size={14} className="mr-1" />
             添加分镜
           </button>
-          
-          <button 
-            className="border border-[#17A2B8] text-[#17A2B8] px-4 py-1.5 rounded text-sm font-medium flex items-center hover:bg-blue-50 transition-colors"
-            onClick={handleBatchGenerate}
-          >
-            <Zap size={16} className="mr-1" />
-            批量生成图像
-          </button>
-          
-          <div className="flex items-center space-x-1 border border-gray-200 px-2 py-1 rounded">
-            <Settings size={16} className="text-gray-600" />
-            <span className="text-sm text-gray-600 mr-2">全局风格:</span>
-            <StyleSelector 
-              selectedStyle={selectedStyle}
-              onStyleChange={handleStyleChange}
-            />
-          </div>
-          
-          <div className="flex items-center space-x-2 border border-gray-200 px-3 py-1.5 rounded">
-            <span className="text-sm text-gray-600">使用API:</span>
-            <div 
-              className={`w-12 h-6 rounded-full flex items-center p-1 cursor-pointer transition-colors ${useRealApi ? 'bg-blue-500' : 'bg-gray-300'}`}
-              onClick={() => setUseRealApi(prev => !prev)}
-            >
-              <div 
-                className={`bg-white w-4 h-4 rounded-full transform transition-transform ${useRealApi ? 'translate-x-6' : 'translate-x-0'}`} 
-              />
-            </div>
-          </div>
+          <StyleSelector 
+            selectedStyle={selectedStyle}
+            onStyleChange={handleStyleChange}
+          />
         </div>
       </div>
 
@@ -1385,14 +1551,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
           </div>
         ) : (
           <ReactFlow
-            nodes={nodes.map(node => ({
-              ...node,
-              draggable: true, // 启用拖动功能
-              data: {
-                ...node.data,
-                // Pass selectedStyle if needed
-              }
-            }))}
+            nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
@@ -1405,33 +1564,16 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             attributionPosition="bottom-right"
             zoomOnScroll={true}
             panOnScroll={false}
-            onNodeClick={(event, node) => {
-              // 完全不阻止事件冒泡，让节点内部的点击事件能够正常处理
-              console.log("节点点击事件:", node.id);
-            }}
-            onPaneClick={(event) => {
-              // 点击空白区域时的处理
-              console.log("画布点击");
-            }}
-            proOptions={{ 
-              hideAttribution: true,
-              account: 'paid-pro' 
-            }}
+            nodesDraggable={true}
+            elementsSelectable={true}
+            snapToGrid={false}
+            preventScrolling={true}
+            onlyRenderVisibleElements={false} // 始终渲染所有节点，避免不可见节点的宽度计算问题
+            nodeOrigin={[0, 0]} // 使用左上角作为原点，简化定位计算
             style={{ 
               background: '#F4F5F7',
               height: '100%'
             }}
-            nodesDraggable={true}
-            elementsSelectable={true}
-            snapToGrid={false}
-            snapGrid={[20, 20]}
-            nodeExtent={[
-              [0, 0],
-              [2000, 2000]
-            ]}
-            preventScrolling={true}
-            onlyRenderVisibleElements={true}
-            nodeOrigin={[0.5, 0.5]}
           >
             <Controls showInteractive={false} />
             <Background variant="dots" gap={20} size={1} />
@@ -1441,54 +1583,13 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             <Panel position="top-left" className="bg-white p-2 rounded shadow-md text-xs">
               <div className="font-bold mb-1">调试信息:</div>
               <div>节点数量: {nodes.length}</div>
-              <div className="mt-1">API状态: <span className={useRealApi ? "text-green-600 font-bold" : "text-red-600"}>{useRealApi ? '已启用' : '已禁用'}</span></div>
+              <div className="mt-1">当前风格: <span className="text-blue-600 font-bold">{selectedStyle}</span></div>
               <div className="mt-1 text-xs text-blue-600 max-w-[220px] truncate">{apiStatus}</div>
               {lastError && (
                 <div className="mt-1 text-xs text-red-600 max-w-[220px] truncate">
                   错误: {lastError.message}
                 </div>
               )}
-              <div className="mt-1 truncate max-w-[220px]">
-                参考图: <a href={referenceImageUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">{referenceImageUrl?.substring(0, 20)}...</a>
-              </div>
-              <div className="flex space-x-1 mt-2">
-              <button 
-                  className="px-2 py-1 bg-blue-500 text-white rounded text-xs"
-                  onClick={() => {
-                    console.log("当前节点状态:", nodes);
-                    setApiStatus(`节点状态已打印到控制台，节点数量: ${nodes.length}`);
-                  }}
-                >
-                  打印状态
-              </button>
-                <button 
-                  className="px-2 py-1 bg-green-500 text-white rounded text-xs"
-                  onClick={testApiConnection}
-                  disabled={!useRealApi}
-                >
-                  测试API
-                </button>
-                <button 
-                  className="px-2 py-1 bg-purple-500 text-white rounded text-xs"
-                  onClick={() => {
-                    // 打印节点布局信息
-                    const layoutInfo = nodes.map(node => ({
-                      id: node.id,
-                      label: node.data.label,
-                      position: node.position,
-                      state: nodeStatesRef.current[node.id]?.state || 'unknown',
-                      isExpanded: nodeStatesRef.current[node.id]?.isExpanded || false
-                    }));
-                    console.table(layoutInfo);
-                    setApiStatus('节点布局信息已打印到控制台');
-                    
-                    // 重新排列节点
-                    setNodes(rearrangeNodes(nodes));
-                  }}
-                >
-                  修复布局
-                </button>
-              </div>
             </Panel>
           </ReactFlow>
         )}

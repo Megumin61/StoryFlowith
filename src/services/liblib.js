@@ -14,7 +14,7 @@ const debugLog = (...args) => {
 };
 
 // 从配置文件获取API信息
-const API_BASE_URL = liblibConfig.apiBaseUrl; // 确保使用绝对 URL 'https://openapi.liblibai.cloud'
+const API_BASE_URL = liblibConfig.apiBaseUrl; // 使用代理路径 '/api/liblib'
 const ACCESS_KEY = liblibConfig.accessKey;
 const SECRET_KEY = liblibConfig.secretKey;
 
@@ -85,6 +85,7 @@ const generateSignature = async (uri) => {
 
 // 构建完整的API URL，包含签名信息
 const buildApiUrl = async (uri) => {
+  // 移除 cleanUri 剥离逻辑，以避免丢失 /api/ 前缀
   const { signature, timestamp, signatureNonce } = await generateSignature(uri);
   return `${API_BASE_URL}${uri}?AccessKey=${ACCESS_KEY}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
 };
@@ -94,14 +95,14 @@ const generateTextToImage = async (prompt, options = {}) => {
   try {
     debugLog(`开始文生图调用, 提示词: ${prompt.substring(0, 30)}...`);
     
-    // 使用原始路径，package.json中的proxy会自动处理
+    // 使用正确路径 - Kontext文生图API
     const uri = '/api/generate/kontext/text2img';
     
     // 构建签名参数
-    const { signature, timestamp, signatureNonce } = await generateSignature('/api/generate/kontext/text2img');
+    const { signature, timestamp, signatureNonce } = await generateSignature(uri);
     
-    // 构建API URL，使用相对路径
-    const apiUrl = `/api/generate/kontext/text2img?AccessKey=${ACCESS_KEY}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+    // 构建API URL，使用代理路径
+    const apiUrl = `${API_BASE_URL}${uri}?AccessKey=${ACCESS_KEY}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
     
     debugLog(`使用API URL: ${apiUrl}`);
     
@@ -109,7 +110,7 @@ const generateTextToImage = async (prompt, options = {}) => {
     const defaultParams = {
       model: 'max',
       prompt,
-      aspectRatio: '1:1',
+      aspectRatio: '1:1', // 使用字符串枚举格式，符合API要求
       guidance_scale: 3.5,
       imgCount: 1
     };
@@ -179,31 +180,31 @@ const generateImageToImage = async (prompt, imageUrls = [], options = {}) => {
       }
     });
     
-    // 使用原始路径，package.json中的proxy会自动处理
+    // 使用正确路径 - Kontext图生图API
     const uri = '/api/generate/kontext/img2img';
     
     // 构建签名参数
-    const { signature, timestamp, signatureNonce } = await generateSignature('/api/generate/kontext/img2img');
+    const { signature, timestamp, signatureNonce } = await generateSignature(uri);
     
     // 打印时间戳和随机字符串，方便调试
     console.log('API请求参数:', {
-      uri: '/api/generate/kontext/img2img',
+      uri,
       AccessKey: ACCESS_KEY,
       Timestamp: timestamp,
       SignatureNonce: signatureNonce,
       Signature: signature
     });
     
-    // 构建API URL，使用相对路径
-    const apiUrl = `/api/generate/kontext/img2img?AccessKey=${ACCESS_KEY}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+    // 构建API URL，使用代理路径
+    const apiUrl = `${API_BASE_URL}${uri}?AccessKey=${ACCESS_KEY}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
     
     debugLog(`使用API URL: ${apiUrl}`);
     
-    // 默认参数 - 修改默认比例为4:3
+    // 默认参数 - 使用文档中指定的格式
     const defaultParams = {
       model: 'max',
       prompt,
-      aspectRatio: '4:3', // 默认使用4:3比例
+      aspectRatio: '4:3', // 使用字符串枚举格式，符合API要求
       guidance_scale: 3.5,
       imgCount: 1,
       image_list: imageUrls
@@ -238,6 +239,12 @@ const generateImageToImage = async (prompt, imageUrls = [], options = {}) => {
       throw new Error(`解析响应失败: ${responseText}`);
     }
     
+    // 检查特定错误码
+    if (data.code === 100031) {
+      debugLog(`图生图调用遇到内容审核问题: ${JSON.stringify(data)}`);
+      throw new Error(`图片包含违规内容，请修改图片或提示词: ${data.msg}`);
+    }
+    
     if (!response.ok) {
       throw new Error(data.message || `图生图API调用失败: HTTP ${response.status}`);
     }
@@ -260,15 +267,15 @@ const checkTaskStatus = async (generateUuid) => {
       throw new Error('generateUuid参数不能为空');
     }
     
-    // 使用原始路径，package.json中的proxy会自动处理
+    // 使用正确路径
     const uri = '/api/generate/status';
     
     // 构建签名参数
-    const { signature, timestamp, signatureNonce } = await generateSignature('/api/generate/status');
+    const { signature, timestamp, signatureNonce } = await generateSignature(uri);
     
     // 打印状态查询参数
     console.log('状态查询参数:', {
-      uri: '/api/generate/status',
+      uri,
       AccessKey: ACCESS_KEY,
       Timestamp: timestamp,
       SignatureNonce: signatureNonce,
@@ -276,8 +283,8 @@ const checkTaskStatus = async (generateUuid) => {
       generateUuid
     });
     
-    // 构建API URL，使用相对路径
-    const apiUrl = `/api/generate/status?AccessKey=${ACCESS_KEY}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+    // 构建API URL，使用代理路径
+    const apiUrl = `${API_BASE_URL}${uri}?AccessKey=${ACCESS_KEY}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
     
     debugLog(`使用API URL: ${apiUrl}`);
     
@@ -305,6 +312,10 @@ const checkTaskStatus = async (generateUuid) => {
     
     // 处理API返回的错误码
     if (data.code !== 0) {
+      // 特殊处理违规内容错误
+      if (data.code === 100031) {
+        throw new Error(`图片包含违规内容，请修改图片或提示词: ${data.msg}`);
+      }
       throw new Error(data.msg || `API错误: ${data.code}`);
     }
     
@@ -382,7 +393,13 @@ const pollTaskUntilDone = async (generateUuid, intervalMs = 1000, maxAttempts = 
         // 如果任务失败，抛出错误
         if (result.generateStatus === 4) {
           console.error('任务失败:', result.generateMsg);
-          reject(new Error(`生成任务失败: ${result.generateMsg}`));
+          
+          // 检查是否是内容审核失败
+          if (result.code === 100031 || (result.generateMsg && result.generateMsg.includes('违规内容'))) {
+            reject(new Error(`生成任务失败: 图片包含违规内容，请修改图片或提示词。详情: ${result.generateMsg}`));
+          } else {
+            reject(new Error(`生成任务失败: ${result.generateMsg}`));
+          }
           return;
         }
         

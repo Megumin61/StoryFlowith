@@ -4,9 +4,9 @@ import { Image as ImageIcon, RefreshCw, Edit2, X, ChevronDown, ChevronUp, Loader
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 // 导入测试图像
 import testImage from '../images/test.png';
-// 导入LiblibAI API服务
-import LiblibAPI from '../services/liblib';
-import { liblibConfig } from '../config';
+// 导入FalAI API服务
+import FalAI from '../services/falai';
+import { falConfig } from '../config';
 // 导入有道翻译服务
 import YoudaoTranslate from '../services/youdaoTranslate';
 
@@ -79,22 +79,25 @@ const NODE_STATES = {
   IMAGE_EDITING: 'imageEditing'
 };
 
+// 调整节点宽度常量，使比例更适合15:9的图像
+const NODE_WIDTH = {
+  COLLAPSED: 220,
+  EXPANDED: 320  // 进一步增加展开时的宽度，以便更好地显示15:9比例的图像
+};
+
 const StoryNode = ({ data, selected }) => {
   // 基本状态
+  const [nodeState, setNodeState] = useState(data.image ? NODE_STATES.IMAGE : NODE_STATES.COLLAPSED);
   const [nodeText, setNodeText] = useState(data.text || '');
   const [visualPrompt, setVisualPrompt] = useState(data.imagePrompt || data.text || '');
+  const [regeneratePrompt, setRegeneratePrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [toasts, setToasts] = useState([]);
-  const [showLeftButton, setShowLeftButton] = useState(false);
-  const [showRightButton, setShowRightButton] = useState(false);
-
-  // 节点状态
-  const [nodeState, setNodeState] = useState(
-    data.image ? NODE_STATES.IMAGE : NODE_STATES.COLLAPSED
-  );
-  const [regeneratePrompt, setRegeneratePrompt] = useState(''); // 新增再生成提示
-
-  const controls = useAnimation();
+  const [isHoveringLeftButton, setIsHoveringLeftButton] = useState(false);
+  const [isHoveringRightButton, setIsHoveringRightButton] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  
+  // refs
   const textAreaRef = useRef(null);
   const promptTextAreaRef = useRef(null);
   const toastPositionRef = useRef({ x: 0, y: 0 });
@@ -105,36 +108,133 @@ const StoryNode = ({ data, selected }) => {
   const rightButtonRef = useRef(null);
   const prevNodeStateRef = useRef(nodeState);
 
+  // 动画控制
+  const controls = useAnimation();
+  
+  // 生成过程计时器状态
+  const [generationStartTime, setGenerationStartTime] = useState(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  
+  // 当进入生成状态时启动计时器
+  useEffect(() => {
+    let timer;
+    if (nodeState === NODE_STATES.GENERATING) {
+      setGenerationStartTime(new Date());
+      setElapsedTime(0);
+      
+      timer = setInterval(() => {
+        setElapsedTime(prev => prev + 1);
+      }, 1000);
+    } else {
+      setGenerationStartTime(null);
+      setElapsedTime(0);
+    }
+    
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [nodeState]);
+
+  // 初始化控件和数据
   useEffect(() => {
     controls.start({ opacity: 1, scale: 1 });
     setNodeText(data.text || '');
     setVisualPrompt(data.imagePrompt || data.text || '');
   }, [controls, data.text, data.imagePrompt]);
 
+  // 修改副作用，避免ResizeObserver循环错误
   useEffect(() => {
-    if (textAreaRef.current) {
-      textAreaRef.current.style.height = 'auto';
-      textAreaRef.current.style.height = `${textAreaRef.current.scrollHeight}px`;
-      if (nodeState === NODE_STATES.EDITING) {
-        textAreaRef.current.focus();
-      }
-    }
-  }, [nodeState, nodeText]);
+    // 使用防抖函数减少调整频率
+    let resizeTimeout;
 
+    // 自动调整所有文本区域的高度
+    const adjustTextareaHeights = () => {
+      clearTimeout(resizeTimeout);
+
+      resizeTimeout = setTimeout(() => {
+        try {
+          const textareas = nodeRef.current?.querySelectorAll('textarea');
+          if (textareas) {
+            textareas.forEach(textarea => {
+              // 不直接在循环中操作DOM，而是使用RAF分散操作
+              window.requestAnimationFrame(() => {
+                try {
+                  // 先重置高度，然后再设置为scrollHeight
+                  textarea.style.height = 'auto';
+                  const scrollHeight = textarea.scrollHeight;
+                  
+                  // 限制最大高度，避免过大导致布局问题
+                  const maxHeight = 200; // 设置一个合理的最大高度
+                  textarea.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+                  
+                  // 如果内容超出最大高度，启用滚动
+                  if (scrollHeight > maxHeight) {
+                    textarea.style.overflowY = 'auto';
+                  } else {
+                    textarea.style.overflowY = 'hidden';
+                  }
+                } catch (err) {
+                  console.error('调整文本区域高度时出错:', err);
+                }
+              });
+            });
+          }
+        } catch (error) {
+          console.error('处理文本区域时出错:', error);
+        }
+      }, 50); // 增加延迟，减少频繁触发
+    };
+
+    // 初始调整使用稍长延迟
+    const initialAdjustment = setTimeout(adjustTextareaHeights, 100);
+
+    // 监听窗口大小变化，使用更长的防抖
+    let resizeTimer;
+    const handleResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(adjustTextareaHeights, 200);
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(initialAdjustment);
+      clearTimeout(resizeTimeout);
+      clearTimeout(resizeTimer);
+    };
+  }, [nodeState, nodeText, visualPrompt, regeneratePrompt]);
+
+  // 添加焦点管理
   useEffect(() => {
-    if (promptTextAreaRef.current && nodeState === NODE_STATES.EDITING) {
-      promptTextAreaRef.current.style.height = 'auto';
-      promptTextAreaRef.current.style.height = `${promptTextAreaRef.current.scrollHeight}px`;
+    // 当状态变为编辑状态时，设置焦点
+    if (nodeState === NODE_STATES.EDITING) {
+      // 使用短暂延迟确保DOM已更新
+      setTimeout(() => {
+        if (textAreaRef.current) {
+          textAreaRef.current.focus();
+        }
+      }, 50);
+    } else if (nodeState === NODE_STATES.IMAGE_EDITING) {
+      // 编辑图像状态时，聚焦到提示词输入框
+      setTimeout(() => {
+        if (promptTextAreaRef.current) {
       promptTextAreaRef.current.focus();
     }
-  }, [nodeState, visualPrompt]);
+      }, 50);
+    }
+  }, [nodeState]);
 
-  // 当节点状态变化时通知父组件
+  // 优化节点状态变化处理
   useEffect(() => {
     if (prevNodeStateRef.current !== nodeState && typeof data.onStateChange === 'function') {
       const isExpanded = nodeState !== NODE_STATES.COLLAPSED;
-      console.log(`节点 ${data.id} 状态变更为: ${nodeState}, 展开状态: ${isExpanded}`);
+      
+      // 将状态变更延迟一帧，确保UI更新后再触发布局调整
+      requestAnimationFrame(() => {
       data.onStateChange(data.id, nodeState, isExpanded);
+      });
+      
       prevNodeStateRef.current = nodeState;
     }
   }, [nodeState, data]);
@@ -142,24 +242,24 @@ const StoryNode = ({ data, selected }) => {
   // 添加鼠标事件处理
   useEffect(() => {
     const handleMouseEnterLeftButton = () => {
-      setShowLeftButton(true);
+      setIsHoveringLeftButton(true);
     };
 
     const handleMouseLeaveLeftButton = (e) => {
       // 检查鼠标是否移动到感应区域
       if (!leftSideRef.current?.contains(e.relatedTarget)) {
-        setShowLeftButton(false);
+        setIsHoveringLeftButton(false);
       }
     };
 
     const handleMouseEnterRightButton = () => {
-      setShowRightButton(true);
+      setIsHoveringRightButton(true);
     };
 
     const handleMouseLeaveRightButton = (e) => {
       // 检查鼠标是否移动到感应区域
       if (!rightSideRef.current?.contains(e.relatedTarget)) {
-        setShowRightButton(false);
+        setIsHoveringRightButton(false);
       }
     };
 
@@ -213,25 +313,67 @@ const StoryNode = ({ data, selected }) => {
     }
   };
 
-  // 修改文本变化处理函数，使用RAF避免连续多次重排
+  // 修改文本变化处理函数，减少DOM操作频率
   const handleTextChange = (e) => {
     setNodeText(e.target.value);
 
-    // 使用requestAnimationFrame优化性能
+    // 使用防抖避免频繁触发布局计算
+    if (handleTextChange.timeout) {
+      clearTimeout(handleTextChange.timeout);
+    }
+    
+    handleTextChange.timeout = setTimeout(() => {
     requestAnimationFrame(() => {
+      try {
       e.target.style.height = 'auto';
-      e.target.style.height = `${e.target.scrollHeight}px`;
+        const scrollHeight = e.target.scrollHeight;
+        
+        // 限制最大高度
+        const maxHeight = 200;
+        e.target.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+        
+        // 如果内容超出最大高度，启用滚动
+        if (scrollHeight > maxHeight) {
+          e.target.style.overflowY = 'auto';
+        } else {
+          e.target.style.overflowY = 'hidden';
+        }
+      } catch (err) {
+        console.error('调整文本区域高度时出错:', err);
+      }
     });
+    }, 50);
   };
 
   const handlePromptChange = (e) => {
     setVisualPrompt(e.target.value);
 
-    // 使用requestAnimationFrame优化性能
+    // 使用防抖避免频繁触发布局计算
+    if (handlePromptChange.timeout) {
+      clearTimeout(handlePromptChange.timeout);
+    }
+    
+    handlePromptChange.timeout = setTimeout(() => {
     requestAnimationFrame(() => {
+      try {
       e.target.style.height = 'auto';
-      e.target.style.height = `${e.target.scrollHeight}px`;
+        const scrollHeight = e.target.scrollHeight;
+        
+        // 限制最大高度
+        const maxHeight = 200;
+        e.target.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+        
+        // 如果内容超出最大高度，启用滚动
+        if (scrollHeight > maxHeight) {
+          e.target.style.overflowY = 'auto';
+        } else {
+          e.target.style.overflowY = 'hidden';
+        }
+      } catch (err) {
+        console.error('调整文本区域高度时出错:', err);
+      }
     });
+    }, 50);
   };
 
   const handleTextSave = () => {
@@ -241,102 +383,127 @@ const StoryNode = ({ data, selected }) => {
     }
   };
 
+  // 修复handleDeleteNode函数，确保在没有事件对象时也能正常工作
   const handleDeleteNode = (e) => {
+    // 添加默认值，避免在没有事件对象时报错
+    if (e) {
     e.stopPropagation();
-    controls.start({ opacity: 0, scale: 0.8 }).then(() => {
-      data.onDeleteNode?.(data.id);
-      addToast('节点已删除', 'success');
-    });
+    }
+    
+    console.log('StoryNode 调用删除函数, 节点ID:', data.id);
+    
+    // 直接调用删除回调，不等待动画完成
+    if (typeof data.onDeleteNode === 'function') {
+      data.onDeleteNode(data.id);
+    } else {
+      console.error('删除回调未定义', data);
+    }
   };
 
+  // 修改生成图像函数，添加时间记录和完整打印
   const handleGenerateImage = async () => {
     setNodeState(NODE_STATES.GENERATING);
     setIsGenerating(true);
+    const startTime = new Date();
+    const startTimeStr = startTime.toLocaleTimeString() + '.' + startTime.getMilliseconds();
+    console.log(`[生成图像] 开始生成图像, 时间: ${startTimeStr}`);
 
     try {
+      // 添加正面引导词，提高安全性
+      let safePrompt = visualPrompt;
+      
       // 翻译视觉提示词为英文
       let translatedPrompt;
+      const translateStartTime = new Date();
+      console.log(`[生成图像] 开始翻译提示词: "${safePrompt}", 时间: ${translateStartTime.toLocaleTimeString() + '.' + translateStartTime.getMilliseconds()}`);
       try {
-        translatedPrompt = await YoudaoTranslate.zhToEn(visualPrompt);
-        console.log(`翻译成功: ${translatedPrompt}`);
+        translatedPrompt = await YoudaoTranslate.zhToEn(safePrompt);
+        const translateEndTime = new Date();
+        const translateTime = (translateEndTime - translateStartTime) / 1000;
+        console.log(`[生成图像] 翻译成功: "${translatedPrompt}", 用时: ${translateTime}秒, 时间: ${translateEndTime.toLocaleTimeString() + '.' + translateEndTime.getMilliseconds()}`);
       } catch (error) {
-        console.error('翻译失败，使用原文:', error);
-        translatedPrompt = visualPrompt; // 翻译失败 fallback 到原文
+        console.error('[生成图像] 翻译失败:', error);
+        translatedPrompt = safePrompt; // 翻译失败 fallback 到原文
+        console.warn(`[生成图像] 使用原文作为提示词: "${translatedPrompt}"`);
       }
 
-      // 使用翻译后的提示词构建 finalPrompt
-      const prompt = `Don't reference the characters in the image, only reference the style of the image, generate a storyboard frame for me: ${translatedPrompt}`;
-      // 构建提示词，根据要求格式化
-      // const prompt = `Do not refer to the characters in the image, but only to the style of the image, and generate storyboard frames for me:：${visualPrompt}`;
+      // 使用翻译后的提示词构建 finalPrompt，不再添加安全描述
+      const prompt = `Don't reference the characters in the image, only reference the style of the image, generate a single storyboard frame for me: ${translatedPrompt}`;
+      console.log(`[生成图像] 最终提示词: "${prompt}"`);
 
-      // 使用静态参考图URL
-      const referenceImageUrl = "https://static-mp-ba33f5b1-550e-4c1f-8c15-cd4190c3c69b.next.bspapp.com/style1.png";
+      // 从data属性中获取风格名称
+      const styleName = data.styleName || "style1"; // 获取风格名称
+      console.log(`[生成图像] 风格名称: ${styleName}`);
 
-      // 调用LiblibAI的图生图API
-      const response = await LiblibAPI.generateImageToImage(
-        prompt,
-        [referenceImageUrl],
-        {
-          model: 'pro',
-          aspectRatio: liblibConfig.defaultAspectRatio || '4:3'
-        }
+      // 获取风格图像URL
+      const referenceImageUrl = FalAI.STYLE_URLS[styleName] || FalAI.STYLE_URLS.style1;
+      console.log(`[生成图像] 使用风格图像URL: ${referenceImageUrl}`);
+
+      // 调用FalAI的图生图API
+      const apiStartTime = new Date();
+      console.log(`[生成图像] 开始调用FalAI API, 时间: ${apiStartTime.toLocaleTimeString() + '.' + apiStartTime.getMilliseconds()}`);
+      const response = await FalAI.generateImageToImage(
+        prompt, // 这里使用了翻译后的提示词
+        [referenceImageUrl], // 使用风格图像URL
+        false, // 不使用示例图像
+        styleName // 传递风格名称
       );
 
-      // 确保我们获取到了正确的任务ID
-      if (!response || !response.data || !response.data.generateUuid) {
-        throw new Error('API响应缺少generateUuid');
+      const apiEndTime = new Date();
+      const apiTime = (apiEndTime - apiStartTime) / 1000;
+      console.log(`[生成图像] API调用完成, 用时: ${apiTime}秒, 时间: ${apiEndTime.toLocaleTimeString() + '.' + apiEndTime.getMilliseconds()}`);
+      
+      // 检查响应状态
+      console.log('[生成图像] 收到响应:', JSON.stringify(response));
+        
+      // 从fal.ai API响应中获取图像URL
+      if (!response || !response.data || !response.data.images || !response.data.images[0]) {
+        console.error('[生成图像] API响应格式不正确:', response);
+        throw new Error('未获取到生成的图像URL');
       }
 
-      const generateUuid = response.data.generateUuid;
-      console.log(`图像生成任务已提交，任务ID: ${generateUuid}`);
-
-      // 轮询任务状态直到完成
-      const result = await LiblibAPI.pollTaskUntilDone(generateUuid, 2000, 120);
-
       // 获取生成的图像URL
-      if (result.images && result.images.length > 0) {
-        const imageUrl = result.images[0].imageUrl;
-        console.log(`图像生成成功: ${imageUrl}`);
+      const imageUrl = response.data.images[0];
+      const endTime = new Date();
+      const timeTaken = (endTime - startTime) / 1000;
+      console.log(`[生成图像] 图像生成成功: ${imageUrl}, 总耗时: ${timeTaken}秒, 结束时间: ${endTime.toLocaleTimeString() + '.' + endTime.getMilliseconds()}`);
+
+      // 创建新图像对象并预加载，确保图像已经加载完成再更新UI
+      const img = new Image();
+      img.src = imageUrl;
+      
+      // 等待图像加载完成或加载失败
+      const loadStartTime = new Date();
+      console.log(`[生成图像] 开始加载图像, 时间: ${loadStartTime.toLocaleTimeString() + '.' + loadStartTime.getMilliseconds()}`);
+      await new Promise((resolve) => {
+        img.onload = () => {
+          const loadEndTime = new Date();
+          const loadTime = (loadEndTime - loadStartTime) / 1000;
+          console.log(`[生成图像] 图像预加载成功, 用时: ${loadTime}秒, 时间: ${loadEndTime.toLocaleTimeString() + '.' + loadEndTime.getMilliseconds()}`);
+          resolve();
+        };
+        img.onerror = () => {
+          console.warn('[生成图像] 图像预加载失败，将使用原始URL');
+          resolve();
+        };
+        
+        // 设置超时，防止无限等待
+        setTimeout(resolve, 3000);
+      });
 
         // 更新节点数据
         data.onUpdateNode?.(data.id, {
           image: imageUrl,
-          imagePrompt: visualPrompt
+        imagePrompt: visualPrompt,
+        styleName: styleName // 保存风格名称
         });
 
-        addToast('图像已生成', 'success');
         setNodeState(NODE_STATES.IMAGE);
-      } else {
-        throw new Error('未获取到生成的图像');
-      }
     } catch (error) {
-      console.error("图像生成失败:", error);
-
-      // 尝试从错误中提取图像URL
-      if (error.message && error.message.includes('imageUrl')) {
-        try {
-          const match = error.message.match(/imageUrl":"([^"]+)"/);
-          if (match && match[1]) {
-            const imageUrl = match[1];
-            console.log(`尽管出错，但图像已生成: ${imageUrl}`);
-
-            // 更新节点数据
-            data.onUpdateNode?.(data.id, {
-              image: imageUrl,
-              imagePrompt: visualPrompt
-            });
-
-            addToast('图像已生成', 'success');
-            setNodeState(NODE_STATES.IMAGE);
-            return;
-          }
-        } catch (e) {
-          console.error('尝试从错误中提取图像URL失败', e);
-        }
-      }
+      console.error("[生成图像] 图像生成失败:", error);
+      console.error('[生成图像] 错误详情:', error);
 
       // 如果没有找到图像URL，显示错误并回到编辑状态
-      addToast('图像生成失败', 'error');
       setNodeState(NODE_STATES.EDITING);
     }
 
@@ -358,22 +525,36 @@ const StoryNode = ({ data, selected }) => {
     setRegeneratePrompt('');
   };
 
-  // 修改重新生成图像函数
+  // 修改重新生成图像函数，添加时间记录和完整打印
   const handleRegenerateImage = async () => {
     setNodeState(NODE_STATES.GENERATING);
     setIsGenerating(true);
+    const startTime = new Date();
+    const startTimeStr = startTime.toLocaleTimeString() + '.' + startTime.getMilliseconds();
+    console.log(`[重新生成] 开始重新生成图像, 时间: ${startTimeStr}`);
 
     try {
       // 构建提示词
-      const finalPrompt = regeneratePrompt || visualPrompt;
+      const userPrompt = regeneratePrompt || visualPrompt;
+      
+      // 不再添加安全提示词
+      const finalPrompt = userPrompt;
+      
+      console.log(`[重新生成] 原始提示词: "${finalPrompt}"`);
+      
       // 翻译编辑提示词为英文
       let translatedPrompt;
+      const translateStartTime = new Date();
+      console.log(`[重新生成] 开始翻译提示词, 时间: ${translateStartTime.toLocaleTimeString() + '.' + translateStartTime.getMilliseconds()}`);
       try {
         translatedPrompt = await YoudaoTranslate.zhToEn(finalPrompt);
-        console.log(`翻译成功: ${translatedPrompt}`);
+        const translateEndTime = new Date();
+        const translateTime = (translateEndTime - translateStartTime) / 1000;
+        console.log(`[重新生成] 翻译成功: "${translatedPrompt}", 用时: ${translateTime}秒, 时间: ${translateEndTime.toLocaleTimeString() + '.' + translateEndTime.getMilliseconds()}`);
       } catch (error) {
-        console.error('翻译失败，使用原文:', error);
+        console.error('[重新生成] 翻译失败:', error);
         translatedPrompt = finalPrompt; // 翻译失败 fallback 到原文
+        console.warn(`[重新生成] 使用原文作为提示词: "${translatedPrompt}"`);
       }
 
 
@@ -384,74 +565,77 @@ const StoryNode = ({ data, selected }) => {
         throw new Error('当前图像URL不可用');
       }
 
-      console.log(`开始编辑图像，参考图: ${currentImageUrl}`);
-      console.log(`编辑提示词: ${finalPrompt}`);
+      // 不再添加安全词到提示词
+      const finalTranslatedPrompt = translatedPrompt;
 
-      // 调用LiblibAI的图生图API
-      const response = await LiblibAPI.generateImageToImage(
-        translatedPrompt,
-        [currentImageUrl], // 使用当前图像作为参考
-        {
-          model: 'pro',
-          aspectRatio: liblibConfig.defaultAspectRatio || '4:3'
-        }
+      console.log(`[重新生成] 开始编辑图像，参考图: ${currentImageUrl}`);
+      console.log(`[重新生成] 最终提示词: "${finalTranslatedPrompt}"`);
+
+      // 调用FalAI的图生图API，直接使用当前图像URL
+      const apiStartTime = new Date();
+      console.log(`[重新生成] 开始调用FalAI API, 时间: ${apiStartTime.toLocaleTimeString() + '.' + apiStartTime.getMilliseconds()}`);
+      const response = await FalAI.generateImageToImage(
+        finalTranslatedPrompt, // 使用翻译后的提示词，不添加安全词
+        [currentImageUrl], // 使用当前图像URL
+        false, // 不使用示例图像
+        data.styleName || "style1" // 传递风格名称
       );
 
-      // 确保我们获取到了正确的任务ID
-      if (!response || !response.data || !response.data.generateUuid) {
-        throw new Error('API响应缺少generateUuid');
+      const apiEndTime = new Date();
+      const apiTime = (apiEndTime - apiStartTime) / 1000;
+      console.log(`[重新生成] API调用完成, 用时: ${apiTime}秒, 时间: ${apiEndTime.toLocaleTimeString() + '.' + apiEndTime.getMilliseconds()}`);
+      
+      // 检查响应状态
+      console.log('[重新生成] 收到响应:', JSON.stringify(response));
+        
+      // 从fal.ai API响应中获取图像URL
+      if (!response || !response.data || !response.data.images || !response.data.images[0]) {
+        console.error('[重新生成] API响应格式不正确:', response);
+        throw new Error('未获取到生成的图像URL');
       }
 
-      const generateUuid = response.data.generateUuid;
-      console.log(`图像编辑任务已提交，任务ID: ${generateUuid}`);
-
-      // 轮询任务状态直到完成
-      const result = await LiblibAPI.pollTaskUntilDone(generateUuid, 2000, 120);
-
       // 获取生成的图像URL
-      if (result.images && result.images.length > 0) {
-        const imageUrl = result.images[0].imageUrl;
-        console.log(`图像编辑成功: ${imageUrl}`);
+      const imageUrl = response.data.images[0];
+      const endTime = new Date();
+      const timeTaken = (endTime - startTime) / 1000;
+      console.log(`[重新生成] 图像编辑成功: ${imageUrl}, 总耗时: ${timeTaken}秒, 结束时间: ${endTime.toLocaleTimeString() + '.' + endTime.getMilliseconds()}`);
+
+      // 创建新图像对象并预加载，确保图像已经加载完成再更新UI
+      const img = new Image();
+      img.src = imageUrl;
+      
+      // 等待图像加载完成或加载失败
+      const loadStartTime = new Date();
+      console.log(`[重新生成] 开始加载图像, 时间: ${loadStartTime.toLocaleTimeString() + '.' + loadStartTime.getMilliseconds()}`);
+      await new Promise((resolve) => {
+        img.onload = () => {
+          const loadEndTime = new Date();
+          const loadTime = (loadEndTime - loadStartTime) / 1000;
+          console.log(`[重新生成] 图像预加载成功, 用时: ${loadTime}秒, 时间: ${loadEndTime.toLocaleTimeString() + '.' + loadEndTime.getMilliseconds()}`);
+          resolve();
+        };
+        img.onerror = () => {
+          console.warn('[重新生成] 图像预加载失败，将使用原始URL');
+          resolve();
+        };
+        
+        // 设置超时，防止无限等待
+        setTimeout(resolve, 3000);
+      });
 
         // 更新节点数据
         data.onUpdateNode?.(data.id, {
           image: imageUrl,
-          imagePrompt: finalPrompt
+        imagePrompt: finalPrompt,
+        styleName: data.styleName // 保持原有风格
         });
 
-        addToast('图像已重新生成', 'success');
         setNodeState(NODE_STATES.IMAGE);
-      } else {
-        throw new Error('未获取到生成的图像');
-      }
     } catch (error) {
-      console.error("图像编辑失败:", error);
-
-      // 尝试从错误中提取图像URL
-      if (error.message && error.message.includes('imageUrl')) {
-        try {
-          const match = error.message.match(/imageUrl":"([^"]+)"/);
-          if (match && match[1]) {
-            const imageUrl = match[1];
-            console.log(`尽管出错，但图像已生成: ${imageUrl}`);
-
-            // 更新节点数据
-            data.onUpdateNode?.(data.id, {
-              image: imageUrl,
-              imagePrompt: visualPrompt + (regeneratePrompt ? `，${regeneratePrompt}` : '')
-            });
-
-            addToast('图像已重新生成', 'success');
-            setNodeState(NODE_STATES.IMAGE);
-            return;
-          }
-        } catch (e) {
-          console.error('尝试从错误中提取图像URL失败', e);
-        }
-      }
+      console.error("[重新生成] 图像编辑失败:", error);
+      console.error('[重新生成] 错误详情:', error);
 
       // 如果没有找到图像URL，显示错误并回到编辑状态
-      addToast('图像编辑失败', 'error');
       setNodeState(NODE_STATES.IMAGE_EDITING);
     }
 
@@ -480,58 +664,6 @@ const StoryNode = ({ data, selected }) => {
     }, 0);
   }, [data]);
 
-  // 修改副作用，避免ResizeObserver循环错误
-  useEffect(() => {
-    // 使用防抖函数减少调整频率
-    let resizeTimeout;
-
-    // 自动调整所有文本区域的高度
-    const adjustTextareaHeights = () => {
-      clearTimeout(resizeTimeout);
-
-      resizeTimeout = setTimeout(() => {
-        const textareas = nodeRef.current?.querySelectorAll('textarea');
-        if (textareas) {
-          textareas.forEach(textarea => {
-            // 使用克隆元素计算高度，避免直接操作可能导致的布局循环
-            const clone = textarea.cloneNode(true);
-            clone.style.visibility = 'hidden';
-            clone.style.position = 'absolute';
-            clone.style.height = 'auto';
-            document.body.appendChild(clone);
-
-            const scrollHeight = clone.scrollHeight;
-            document.body.removeChild(clone);
-
-            // 只有当高度确实需要变化时才设置，减少不必要的重排
-            if (textarea.style.height !== `${scrollHeight}px`) {
-              textarea.style.height = `${scrollHeight}px`;
-            }
-          });
-        }
-      }, 10); // 短暂延迟，避免频繁触发
-    };
-
-    // 初始调整
-    const initialAdjustment = setTimeout(adjustTextareaHeights, 50);
-
-    // 监听窗口大小变化，使用防抖
-    let resizeTimer;
-    const handleResize = () => {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(adjustTextareaHeights, 100);
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      clearTimeout(initialAdjustment);
-      clearTimeout(resizeTimeout);
-      clearTimeout(resizeTimer);
-    };
-  }, [nodeState, nodeText, visualPrompt, regeneratePrompt]);
-
   // 渲染折叠状态
   const renderCollapsedCard = () => (
     <div className="flex flex-col p-4 min-h-[100px] cursor-pointer" onClick={handleCardClick}>
@@ -548,9 +680,19 @@ const StoryNode = ({ data, selected }) => {
     </div>
   );
 
-  // 渲染编辑状态
+  // 渲染编辑状态 - 添加简约的右上角关闭按钮
   const renderEditingCard = () => (
-    <div className="flex flex-col p-4">
+    <div className="flex flex-col p-4 relative">
+      {/* 简约右上角删除按钮 - 提高z-index */}
+      <button
+        onClick={() => handleDeleteNode()}
+        className="absolute top-1 right-1 p-1 text-gray-400 hover:text-gray-600 transition-colors z-50"
+        title="删除分镜"
+        style={{ pointerEvents: 'auto' }}
+      >
+        <X size={14} />
+      </button>
+      
       <div className="text-xs text-gray-400 font-medium mb-2">{data.label}</div>
       <textarea
         ref={textAreaRef}
@@ -591,19 +733,27 @@ const StoryNode = ({ data, selected }) => {
     </div>
   );
 
-  // 渲染生成中状态
+  // 渲染生成中状态 - 添加简约的右上角关闭按钮
   const renderGeneratingCard = () => (
-    <div className="flex flex-col p-4">
+    <div className="flex flex-col p-4 relative">
+      {/* 简约右上角删除按钮 - 提高z-index */}
+      <button
+        onClick={() => handleDeleteNode()}
+        className="absolute top-1 right-1 p-1 text-gray-400 hover:text-gray-600 transition-colors z-50"
+        title="删除分镜"
+        style={{ pointerEvents: 'auto' }}
+      >
+        <X size={14} />
+      </button>
+      
       <div className="text-xs text-gray-400 font-medium mb-3">{data.label}</div>
       <div className="h-32 bg-gray-50 rounded-md flex items-center justify-center">
         <div className="text-center">
-          <Loader2 size={20} className="animate-spin text-gray-400 mx-auto mb-2" />
-          <div className="text-xs text-gray-500">生成中</div>
-          {data.generationProgress && (
-            <div className="mt-1 text-xs text-gray-400">
-              {data.generationProgress}%
+          <Loader2 size={24} className="animate-spin text-gray-500 mx-auto mb-2" />
+          <div className="text-sm text-gray-600 font-medium">图像生成中</div>
+          <div className="text-xs text-gray-500 mt-1">
+            请稍候...
             </div>
-          )}
         </div>
       </div>
       <div className="text-sm text-gray-800 mt-3 line-clamp-2 overflow-hidden">{nodeText}</div>
@@ -622,9 +772,22 @@ const StoryNode = ({ data, selected }) => {
         <img
           src={data.image}
           alt={data.label}
-          className="w-full h-auto aspect-[4/3] object-cover rounded-t-[20px]"
+          className="w-full h-auto aspect-[15/9] object-cover rounded-t-[20px]"
+          onLoad={() => console.log(`[图像] 图像加载完成: ${data.image}`)}
+          onError={(e) => {
+            console.error(`图像加载失败: ${data.image}`);
+            e.target.onerror = null; // 防止无限循环
+            
+            // 使用本地测试图像作为备选
+            e.target.src = FalAI.TEST_IMAGE;
+          }}
+          style={{
+            backgroundImage: `url(${FalAI.TEST_IMAGE})`, // 使用测试图像作为背景，在主图像加载前显示
+            backgroundSize: 'cover',
+            backgroundPosition: 'center'
+          }}
         />
-        <div className="absolute top-1.5 right-1.5 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-1.5 right-1.5 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity z-50" style={{ pointerEvents: 'auto' }}>
           <button
             className="p-1.5 bg-black/60 rounded-full hover:bg-blue-600/80 transform hover:scale-110 transition-all duration-200"
             onClick={handleEditImage}
@@ -634,7 +797,10 @@ const StoryNode = ({ data, selected }) => {
           </button>
           <button
             className="p-1.5 bg-black/60 rounded-full hover:bg-red-600/80 transform hover:scale-110 transition-all duration-200"
-            onClick={handleDeleteNode}
+            onClick={() => {
+              console.log('图片状态下点击删除按钮');
+              handleDeleteNode();
+            }}
             title="删除节点"
           >
             <X size={12} className="text-white" />
@@ -651,39 +817,84 @@ const StoryNode = ({ data, selected }) => {
     </div>
   );
 
-  // 修改图片编辑状态的渲染
+  // 修改图片编辑状态的渲染，确保删除按钮在感应区域之上
   const renderImageEditingCard = () => (
     <>
-      <div className="flex flex-col">
-        <div className="relative group">
+      <div className="flex flex-col relative">
+        <div className="relative">
+          {/* 简约右上角删除按钮 - 提高z-index */}
+          <button
+            onClick={() => handleDeleteNode()}
+            className="absolute top-1 right-1 z-50 p-1 text-gray-200 hover:text-white bg-black/30 rounded-full transition-colors"
+            title="删除分镜"
+            style={{ pointerEvents: 'auto' }}
+          >
+            <X size={14} />
+          </button>
+          
           <img
             src={data.image}
             alt={data.label}
-            className="w-full h-auto aspect-[4/3] object-cover rounded-t-[20px]"
+            className="w-full h-auto aspect-[15/9] object-cover rounded-t-[20px]"
+            onLoad={() => console.log(`[图像编辑] 图像加载完成: ${data.image}`)}
+            onError={(e) => {
+              console.error(`图像加载失败: ${data.image}`);
+              e.target.onerror = null; // 防止无限循环
+              
+              // 使用本地测试图像作为备选
+              e.target.src = FalAI.TEST_IMAGE;
+            }}
+            style={{
+              backgroundImage: `url(${FalAI.TEST_IMAGE})`, // 使用测试图像作为背景，在主图像加载前显示
+              backgroundSize: 'cover',
+              backgroundPosition: 'center'
+            }}
           />
-          <div className="absolute top-1.5 right-1.5 flex space-x-1">
-            <button
-              className="p-1.5 bg-black/60 rounded-full hover:bg-red-600/80 transform hover:scale-110 transition-all duration-200"
-              onClick={handleDeleteNode}
-              title="删除节点"
-            >
-              <X size={12} className="text-white" />
-            </button>
-          </div>
         </div>
 
         <div className="border-t border-gray-100"></div>
 
+        {/* 主卡片内容区域 - 包含节点文本和视觉提示词 */}
         <div className="p-3">
           <div className="text-xs text-gray-400 font-medium mb-1">{data.label}</div>
-          <div className="text-sm text-gray-800 p-2 bg-gray-50/50 rounded-md">{nodeText}</div>
+          <div className="text-sm text-gray-800 p-2 bg-gray-50/50 rounded-md mb-2 overflow-auto"
+               style={{ minHeight: '20px', maxHeight: '100px' }}>{nodeText}</div>
+          
+          {/* 视觉提示输入区 */}
+          <div className="border-t border-gray-100 pt-2 mt-1">
+            <div className="text-xs text-gray-400 font-medium mb-1">视觉描述</div>
+            <textarea
+              value={visualPrompt}
+              onChange={handlePromptChange}
+              placeholder="描述基础画面元素..."
+              className="w-full p-2 text-xs resize-none border-gray-100 focus:border-gray-200 bg-gray-50/50 rounded-md min-h-[40px] focus:outline-none focus:ring-0 overflow-hidden"
+              style={{ height: 'auto' }}
+            />
+          </div>
+          
+          {/* 生成按钮 - 调整按钮顺序，缩短文字 */}
+          <div className="flex justify-end mt-2">
+            <button
+              onClick={handleCancel}
+              className="py-1 px-3 mr-2 text-xs text-gray-600 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 rounded-md flex items-center justify-center transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleGenerateImage}
+              className="py-1 px-3 text-xs text-white bg-gray-800 hover:bg-gray-700 rounded-md flex items-center justify-center transition-colors"
+            >
+              <ImageIcon size={10} className="mr-1" />
+              生成
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* 编辑面板 */}
+      {/* 下方弹出的编辑提示面板 - 只包含画面编辑提示 */}
       <div className="absolute left-0 right-0 top-full w-full mt-2 z-40">
         <div className="bg-white rounded-[20px] shadow-lg overflow-hidden border border-gray-200">
-          <div className="p-3 border-b border-gray-100">
+          <div className="p-3">
             <div className="flex justify-between items-center">
               <div className="text-xs text-gray-500">画面编辑提示</div>
               <button
@@ -696,7 +907,7 @@ const StoryNode = ({ data, selected }) => {
             <textarea
               value={regeneratePrompt}
               onChange={(e) => setRegeneratePrompt(e.target.value)}
-              placeholder="输入编辑提示，例如：'添加更多光线'、'改为夜景'"
+              placeholder="输入特定修改要求，例如：'添加更多光线'、'改为夜景'"
               className="w-full p-2 text-xs resize-none border-gray-100 focus:border-gray-200 bg-gray-50/50 rounded-md min-h-[60px] focus:outline-none focus:ring-0 mt-1 overflow-hidden"
               style={{ height: 'auto' }}
             />
@@ -706,21 +917,15 @@ const StoryNode = ({ data, selected }) => {
             <button
               onClick={handleRegenerateImage}
               className="w-full py-1.5 text-xs text-white bg-gray-800 hover:bg-gray-700 rounded-md flex items-center justify-center"
-              disabled={!regeneratePrompt.trim()}
             >
               <RefreshCw size={12} className="mr-1" />
-              {isGenerating ? '处理中...' : '应用编辑'}
+              应用编辑
             </button>
           </div>
         </div>
       </div>
     </>
   );
-
-  // 添加一个额外的副作用来跟踪nodeState的变化
-  useEffect(() => {
-    console.log("节点状态变更为:", nodeState);
-  }, [nodeState]);
 
   // 根据当前状态渲染节点内容
   const renderNodeContent = () => {
@@ -739,7 +944,7 @@ const StoryNode = ({ data, selected }) => {
     }
   };
 
-  // 渲染节点主体
+  // 修改renderNode函数，确保删除按钮不被感应区域挡住，同时保持悬浮添加分镜功能
   const renderNode = () => (
     <motion.div
       ref={nodeRef}
@@ -747,46 +952,31 @@ const StoryNode = ({ data, selected }) => {
         bg-white rounded-[20px]
         ${selected ? 'ring-2 ring-blue-500' : ''}
         shadow-[0_4px_12px_rgba(0,0,0,0.1)]
-        transition-all duration-300 ease-out
-        ${selected ? 'transform -translate-y-1' : ''}
         relative
       `}
       style={{
-        width: nodeState === NODE_STATES.COLLAPSED ? '208px' : '256px',
+        width: nodeState === NODE_STATES.COLLAPSED ? NODE_WIDTH.COLLAPSED + 'px' : NODE_WIDTH.EXPANDED + 'px',
         transformOrigin: 'center center',
-        transition: 'width 300ms ease-in-out, transform 300ms ease-in-out, height 300ms ease-in-out'
       }}
       animate={controls}
       layout="position"
+      transition={{
+        type: "spring",
+        stiffness: 300,
+        damping: 30,
+        duration: 0.3
+      }}
       data-state={nodeState}
       data-expanded={nodeState !== NODE_STATES.COLLAPSED ? 'true' : 'false'}
       data-node-id={data.id}
       data-node-index={data.nodeIndex || 0}
+      data-node-width={nodeState === NODE_STATES.COLLAPSED ? NODE_WIDTH.COLLAPSED : NODE_WIDTH.EXPANDED}
     >
-      {/* 左侧感应区域 - 缩小宽度，避免干扰图片交互 */}
-      <div
-        ref={leftSideRef}
-        className="absolute left-0 top-0 bottom-0 w-6 z-10"
-        onMouseEnter={() => setShowLeftButton(true)}
-        onMouseLeave={() => setShowLeftButton(false)}
-      />
-
-      {/* 左侧添加按钮 - 放在节点外部 */}
-      <div ref={leftButtonRef} className="absolute left-0 top-0 bottom-0 z-50 pointer-events-auto" style={{ width: '0' }}>
-        <AddNodeButton
-          position="left"
-          onClick={handleAddNode}
-          style={{
-            opacity: showLeftButton ? 1 : 0,
-            pointerEvents: showLeftButton ? 'auto' : 'none'
-          }}
-        />
-      </div>
-
+      {/* 节点内容 - 不包含在z-index容器中 */}
       {renderNodeContent()}
 
-      {/* 卡片下方的扩展编辑区域 - 提高z-index并调整位置 */}
-      <div className="absolute left-0 right-0 w-full">
+      {/* 卡片下方的扩展编辑区域 */}
+      <div className="absolute left-0 right-0 w-full z-40">
         <AnimatePresence>
           {nodeState === NODE_STATES.IMAGE_EDITING && (
             <motion.div
@@ -797,68 +987,48 @@ const StoryNode = ({ data, selected }) => {
               transition={{ duration: 0.2 }}
               style={{ pointerEvents: 'auto' }}
             >
-              <div className="bg-white rounded-[20px] shadow-lg overflow-hidden border border-gray-200">
-                <div className="p-3 border-b border-gray-100">
-                  <div className="flex justify-between items-center">
-                    <div className="text-xs text-gray-500">调整视觉提示</div>
-                    <button
-                      onClick={handleCancel}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                  <textarea
-                    value={visualPrompt}
-                    onChange={handlePromptChange}
-                    placeholder="修改基础视觉提示词..."
-                    className="w-full p-2 text-xs resize-none border-gray-100 focus:border-gray-200 bg-gray-50/50 rounded-md min-h-[40px] focus:outline-none focus:ring-0 mt-1 overflow-hidden"
-                    style={{ height: 'auto' }} // 确保初始高度为auto
-                  />
-                </div>
-
-                <div className="p-3">
-                  <div className="text-xs text-gray-500 mb-1">画面编辑提示</div>
-                  <textarea
-                    value={regeneratePrompt}
-                    onChange={(e) => setRegeneratePrompt(e.target.value)}
-                    placeholder="添加特定的修改要求，例如：'添加更多光线'、'改为夜景'"
-                    className="w-full p-2 text-xs resize-none border-gray-100 focus:border-gray-200 bg-gray-50/50 rounded-md min-h-[40px] focus:outline-none focus:ring-0 overflow-hidden"
-                    style={{ height: 'auto' }} // 确保初始高度为auto
-                  />
-                </div>
-
-                <div className="flex bg-gray-50 p-2 border-t border-gray-100">
-                  <button
-                    onClick={handleRegenerateImage}
-                    className="w-full py-1.5 text-xs text-white bg-gray-800 hover:bg-gray-700 rounded-md flex items-center justify-center"
-                  >
-                    <RefreshCw size={12} className="mr-1" />
-                    重新生成
-                  </button>
-                </div>
-              </div>
+              {/* 这里不再需要重复编辑区域，因为我们已经在renderImageEditingCard中实现了 */}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* 右侧感应区域 - 缩小宽度，避免干扰图片交互 */}
+      {/* 左侧感应区域 - 确保高z-index */}
       <div
-        ref={rightSideRef}
-        className="absolute right-0 top-0 bottom-0 w-6 z-10"
-        onMouseEnter={() => setShowRightButton(true)}
-        onMouseLeave={() => setShowRightButton(false)}
+        ref={leftSideRef}
+        className="absolute left-0 top-0 bottom-0 w-6 z-40"
+        onMouseEnter={() => setIsHoveringLeftButton(true)}
+        onMouseLeave={() => setIsHoveringLeftButton(false)}
       />
 
-      {/* 右侧添加按钮 - 放在节点外部 */}
+      {/* 左侧添加按钮 - 放在节点外部，保持高z-index */}
+      <div ref={leftButtonRef} className="absolute left-0 top-0 bottom-0 z-50 pointer-events-auto" style={{ width: '0' }}>
+        <AddNodeButton
+          position="left"
+          onClick={handleAddNode}
+          style={{
+            opacity: isHoveringLeftButton ? 1 : 0,
+            pointerEvents: isHoveringLeftButton ? 'auto' : 'none'
+          }}
+        />
+      </div>
+
+      {/* 右侧感应区域 - 确保高z-index */}
+      <div
+        ref={rightSideRef}
+        className="absolute right-0 top-0 bottom-0 w-6 z-40"
+        onMouseEnter={() => setIsHoveringRightButton(true)}
+        onMouseLeave={() => setIsHoveringRightButton(false)}
+      />
+
+      {/* 右侧添加按钮 - 放在节点外部，保持高z-index */}
       <div ref={rightButtonRef} className="absolute right-0 top-0 bottom-0 z-50 pointer-events-auto" style={{ width: '0' }}>
         <AddNodeButton
           position="right"
           onClick={handleAddNode}
           style={{
-            opacity: showRightButton ? 1 : 0,
-            pointerEvents: showRightButton ? 'auto' : 'none'
+            opacity: isHoveringRightButton ? 1 : 0,
+            pointerEvents: isHoveringRightButton ? 'auto' : 'none'
           }}
         />
       </div>

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useLocale } from '../contexts/LocaleContext';
 
-function IdeaModal({ onGenerate, onTestStoryboard }) {
+function IdeaModal({ onGenerate, onTestStoryboard, onTestFalai }) {
   const [isLoading, setIsLoading] = useState(false);
   const [idea, setIdea] = useState('');
   const locale = useLocale();
@@ -15,6 +15,12 @@ function IdeaModal({ onGenerate, onTestStoryboard }) {
   const handleTestStoryboard = () => {
     setIsLoading(true);
     onTestStoryboard(idea);
+  };
+
+  const handleTestFalai = () => {
+    if (onTestFalai) {
+      onTestFalai();
+    }
   };
 
   return (
@@ -56,6 +62,14 @@ function IdeaModal({ onGenerate, onTestStoryboard }) {
             >
               <span className="btn-text" style={{ display: isLoading ? 'none' : 'inline' }}>测试分镜</span>
               <div className={`loader ${isLoading ? '' : 'hidden'}`}></div>
+            </button>
+            
+            <button 
+              id="test-falai-btn" 
+              className="bg-purple-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200 transform hover:scale-105 flex items-center justify-center"
+              onClick={handleTestFalai}
+            >
+              <span className="btn-text">测试FalAI</span>
             </button>
           </div>
         </div>

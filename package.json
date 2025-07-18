@@ -2,8 +2,8 @@
   "name": "storyflowith",
   "version": "0.1.0",
   "private": true,
-  "proxy": "https://openapi.liblibai.cloud",
   "dependencies": {
+    "@fal-ai/client": "^1.6.0",
     "@reactflow/background": "^11.3.14",
     "@reactflow/controls": "^11.2.14",
     "@reactflow/core": "^11.11.4",
