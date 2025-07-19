@@ -120,6 +120,7 @@ const generateTextToImage = async (prompt) => {
     // 构建请求参数 - 完全按照文档示例
     const input = {
       prompt: prompt,
+      aspect_ratio: "16:9", // 添加宽高比参数，设置为16:9
       sync_mode: true // 启用同步模式，直接返回结果
     };
     
@@ -257,6 +258,7 @@ const generateImageToImage = async (prompt, images = [], useExampleImage = true,
     const input = {
       prompt: prompt,
       image_url: imageUrl,
+      aspect_ratio: "16:9", // 添加宽高比参数，设置为16:9
       sync_mode: true // 启用同步模式，直接返回结果
     };
     

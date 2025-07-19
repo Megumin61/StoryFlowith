@@ -30,10 +30,10 @@ function AppContent() {
   const [selectedFrameId, setSelectedFrameId] = useState(null);
   const [nextFrameId, setNextFrameId] = useState(5);
   const [selectedStyle, setSelectedStyle] = useState('写实');
-  const [showIdea, setShowIdea] = useState(true);
-  const [showRefinementPage, setShowRefinementPage] = useState(false); // 新�：控制新页面的显示状�
-  const [showStoryboardTest, setShowStoryboardTest] = useState(false); // ���������Ʋ��Է־��������ʾ
-  const [showFalaiTest, setShowFalaiTest] = useState(false); // 控制FalAI测试组件的显示
+  const [showIdea, setShowIdea] = useState(false); // 修改为默认不显示想法输入页
+  const [showRefinementPage, setShowRefinementPage] = useState(false);
+  const [showStoryboardTest, setShowStoryboardTest] = useState(true); // 修改为默认显示测试分镜页
+  const [showFalaiTest, setShowFalaiTest] = useState(false);
   const [showJourneyMap, setShowJourneyMap] = useState(false);
   const [showStoryScript, setShowStoryScript] = useState(false);
   const [showUserPersonas, setShowUserPersonas] = useState(false);
@@ -233,7 +233,7 @@ function AppContent() {
         <AnimatePresence>
           {showStoryboardTest && (
             <StoryboardTest
-              initialStoryText={userInput}
+              initialStoryText=""
               onClose={handleCloseStoryboardTest}
             />
           )}

@@ -79,23 +79,24 @@ const NODE_STATES = {
   IMAGE_EDITING: 'imageEditing'
 };
 
-// 调整节点宽度常量，使比例更适合15:9的图像
+// 调整节点宽度常量，使比例更适合16:9的图像
 const NODE_WIDTH = {
-  COLLAPSED: 220,
-  EXPANDED: 320  // 进一步增加展开时的宽度，以便更好地显示15:9比例的图像
+  COLLAPSED: 240, // 适当增加宽度以更好地显示16:9的图像
+  EXPANDED: 360  // 增加展开时的宽度，适应16:9比例的图像
 };
 
 const StoryNode = ({ data, selected }) => {
   // 基本状态
   const [nodeState, setNodeState] = useState(data.image ? NODE_STATES.IMAGE : NODE_STATES.COLLAPSED);
   const [nodeText, setNodeText] = useState(data.text || '');
-  const [visualPrompt, setVisualPrompt] = useState(data.imagePrompt || data.text || '');
+  const [visualPrompt, setVisualPrompt] = useState(data.imagePrompt || ''); // 不再以text作为fallback
   const [regeneratePrompt, setRegeneratePrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [isHoveringLeftButton, setIsHoveringLeftButton] = useState(false);
   const [isHoveringRightButton, setIsHoveringRightButton] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isTextareaActive, setIsTextareaActive] = useState(false); // 添加文本框活动状态
   
   // refs
   const textAreaRef = useRef(null);
@@ -139,7 +140,11 @@ const StoryNode = ({ data, selected }) => {
   useEffect(() => {
     controls.start({ opacity: 1, scale: 1 });
     setNodeText(data.text || '');
-    setVisualPrompt(data.imagePrompt || data.text || '');
+    
+    // 只在有明确的imagePrompt时使用它，不再fallback到text
+    if (data.imagePrompt) {
+      setVisualPrompt(data.imagePrompt);
+    }
   }, [controls, data.text, data.imagePrompt]);
 
   // 修改副作用，避免ResizeObserver循环错误
@@ -288,6 +293,42 @@ const StoryNode = ({ data, selected }) => {
     };
   }, []);
 
+  // 监听文本框活动状态
+  useEffect(() => {
+    // 当文本框活动时，通知父组件禁用拖动和平移
+    if (isTextareaActive) {
+      if (data.onTextFocus) {
+        console.log("文本框活动中，禁用拖动");
+        data.onTextFocus();
+      }
+      
+      // 确保文本框可以正常选择文本
+      document.body.style.userSelect = 'text';
+      document.body.style.webkitUserSelect = 'text';
+      document.body.style.msUserSelect = 'text';
+      document.body.style.pointerEvents = 'auto';
+    } else {
+      if (data.onTextBlur) {
+        console.log("文本框不再活动，启用拖动");
+        data.onTextBlur();
+      }
+      
+      // 恢复默认状态
+      document.body.style.userSelect = '';
+      document.body.style.webkitUserSelect = '';
+      document.body.style.msUserSelect = '';
+      document.body.style.pointerEvents = '';
+    }
+    
+    return () => {
+      // 清理函数，确保恢复默认状态
+      document.body.style.userSelect = '';
+      document.body.style.webkitUserSelect = '';
+      document.body.style.msUserSelect = '';
+      document.body.style.pointerEvents = '';
+    };
+  }, [isTextareaActive, data]);
+
   const addToast = (message, type = 'success') => {
     // 确保nodeRef已设置并且有getBoundingClientRect方法
     if (nodeRef.current) {
@@ -428,7 +469,7 @@ const StoryNode = ({ data, selected }) => {
       }
 
       // 使用翻译后的提示词构建 finalPrompt，不再添加安全描述
-      const prompt = `Don't reference the characters in the image, only reference the style of the image, generate a single storyboard frame for me: ${translatedPrompt}`;
+      const prompt = `Don't reference the characters in the image, only reference the style of the image, generate a single storyboard frame for me(Do not have an outer frame around the image): ${translatedPrompt}`;
       console.log(`[生成图像] 最终提示词: "${prompt}"`);
 
       // 从data属性中获取风格名称
@@ -671,6 +712,7 @@ const StoryNode = ({ data, selected }) => {
       <textarea
         value={nodeText}
         readOnly
+        placeholder={data.placeholder || "点击此处添加分镜描述..."}
         className="w-full text-sm text-gray-800 resize-none bg-gray-50/50 border-none rounded-md p-2 flex-grow focus:outline-none overflow-hidden"
         style={{ height: 'auto' }}
       />
@@ -698,9 +740,30 @@ const StoryNode = ({ data, selected }) => {
         ref={textAreaRef}
         value={nodeText}
         onChange={handleTextChange}
-        onBlur={handleTextSave}
+        onBlur={(e) => {
+          handleTextSave();
+          setIsTextareaActive(false);
+        }}
+        onFocus={() => setIsTextareaActive(true)}
+        onClick={e => {
+          e.stopPropagation();
+          setIsTextareaActive(true);
+        }}
+        placeholder={data.placeholder || "在此处输入分镜描述..."}
         className="w-full text-sm text-gray-800 bg-gray-50/50 border-gray-100 rounded-md p-2 mb-4 resize-none focus:outline-none focus:ring-1 focus:ring-blue-200 overflow-hidden"
         style={{ height: 'auto' }}
+        // 添加更多事件阻止传播，防止文本选择时拖动节点或移动画布
+        onMouseDown={e => {
+          e.stopPropagation();
+          setIsTextareaActive(true);
+        }} 
+        onTouchStart={e => {
+          e.stopPropagation();
+          setIsTextareaActive(true);
+        }}
+        onMouseMove={e => e.stopPropagation()}
+        onTouchMove={e => e.stopPropagation()}
+        draggable="false"
       />
 
       <div className="border-t border-gray-100 pt-4 mt-2">
@@ -709,9 +772,27 @@ const StoryNode = ({ data, selected }) => {
           ref={promptTextAreaRef}
           value={visualPrompt}
           onChange={handlePromptChange}
+          onBlur={() => setIsTextareaActive(false)}
+          onFocus={() => setIsTextareaActive(true)}
+          onClick={e => {
+            e.stopPropagation();
+            setIsTextareaActive(true);
+          }}
           placeholder="描述画面的视觉元素..."
           className="w-full p-2 text-xs resize-none border-gray-100 focus:border-gray-200 bg-gray-50/50 rounded-md min-h-[60px] focus:outline-none focus:ring-0 overflow-hidden"
           style={{ height: 'auto' }}
+          // 添加更多事件阻止传播，防止文本选择时拖动节点或移动画布
+          onMouseDown={e => {
+            e.stopPropagation();
+            setIsTextareaActive(true);
+          }} 
+          onTouchStart={e => {
+            e.stopPropagation();
+            setIsTextareaActive(true);
+          }}
+          onMouseMove={e => e.stopPropagation()}
+          onTouchMove={e => e.stopPropagation()}
+          draggable="false"
         />
 
         <div className="flex gap-2 mt-3">
@@ -753,13 +834,15 @@ const StoryNode = ({ data, selected }) => {
           <div className="text-sm text-gray-600 font-medium">图像生成中</div>
           <div className="text-xs text-gray-500 mt-1">
             请稍候...
-            </div>
+          </div>
         </div>
       </div>
-      <div className="text-sm text-gray-800 mt-3 line-clamp-2 overflow-hidden">{nodeText}</div>
+      {/* 显示简短的情节描述 */}
+      <div className="text-xs text-gray-500 mt-3 line-clamp-1 overflow-hidden">情节: {nodeText.substring(0, 30)}{nodeText.length > 30 ? '...' : ''}</div>
+      {/* 显示主要的视觉提示词 */}
       {visualPrompt && (
-        <div className="text-xs text-gray-500 mt-2 line-clamp-1 overflow-hidden">
-          提示词: {visualPrompt.substring(0, 30)}{visualPrompt.length > 30 ? '...' : ''}
+        <div className="text-sm text-gray-800 mt-2 line-clamp-2 overflow-hidden font-medium">
+          提示词: {visualPrompt.substring(0, 50)}{visualPrompt.length > 50 ? '...' : ''}
         </div>
       )}
     </div>
@@ -772,7 +855,7 @@ const StoryNode = ({ data, selected }) => {
         <img
           src={data.image}
           alt={data.label}
-          className="w-full h-auto aspect-[15/9] object-cover rounded-t-[20px]"
+          className="w-full h-auto aspect-[16/9] object-cover rounded-t-[20px]"
           onLoad={() => console.log(`[图像] 图像加载完成: ${data.image}`)}
           onError={(e) => {
             console.error(`图像加载失败: ${data.image}`);
@@ -812,7 +895,42 @@ const StoryNode = ({ data, selected }) => {
 
       <div className="p-3">
         <div className="text-xs text-gray-400 font-medium mb-1">{data.label}</div>
-        <div className="text-sm text-gray-800 p-2 bg-gray-50/50 rounded-md">{nodeText}</div>
+        {/* 使用可编辑的textarea替代div，并添加自动调整高度属性 */}
+        <textarea
+          value={nodeText}
+          onChange={handleTextChange}
+          onBlur={(e) => {
+            handleTextSave();
+            setIsTextareaActive(false);
+          }}
+          onFocus={() => setIsTextareaActive(true)}
+          onClick={e => {
+            e.stopPropagation();
+            setIsTextareaActive(true);
+          }}
+          placeholder={data.placeholder || "点击此处添加分镜描述..."}
+          className="w-full text-sm text-gray-800 resize-none bg-gray-50/50 border-gray-100 rounded-md p-2 focus:outline-none focus:ring-1 focus:ring-blue-200 overflow-hidden"
+          style={{ height: 'auto', minHeight: '1.5rem', maxHeight: '120px' }}
+          rows="1"
+          ref={el => {
+            if (el) {
+              el.style.height = 'auto';
+              el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+            }
+          }}
+          // 添加更多事件阻止传播，防止文本选择时拖动节点或移动画布
+          onMouseDown={e => {
+            e.stopPropagation();
+            setIsTextareaActive(true);
+          }} 
+          onTouchStart={e => {
+            e.stopPropagation();
+            setIsTextareaActive(true);
+          }}
+          onMouseMove={e => e.stopPropagation()}
+          onTouchMove={e => e.stopPropagation()}
+          draggable="false"
+        />
       </div>
     </div>
   );
@@ -835,7 +953,7 @@ const StoryNode = ({ data, selected }) => {
           <img
             src={data.image}
             alt={data.label}
-            className="w-full h-auto aspect-[15/9] object-cover rounded-t-[20px]"
+            className="w-full h-auto aspect-[16/9] object-cover rounded-t-[20px]"
             onLoad={() => console.log(`[图像编辑] 图像加载完成: ${data.image}`)}
             onError={(e) => {
               console.error(`图像加载失败: ${data.image}`);
@@ -857,8 +975,39 @@ const StoryNode = ({ data, selected }) => {
         {/* 主卡片内容区域 - 包含节点文本和视觉提示词 */}
         <div className="p-3">
           <div className="text-xs text-gray-400 font-medium mb-1">{data.label}</div>
-          <div className="text-sm text-gray-800 p-2 bg-gray-50/50 rounded-md mb-2 overflow-auto"
-               style={{ minHeight: '20px', maxHeight: '100px' }}>{nodeText}</div>
+          {/* 使用可编辑的textarea替代div，并添加自动调整高度属性 */}
+          <textarea
+            value={nodeText}
+            onChange={handleTextChange}
+            onBlur={(e) => {
+              handleTextSave();
+              data.onTextBlur && data.onTextBlur();
+            }}
+            onFocus={() => data.onTextFocus && data.onTextFocus()}
+            onClick={e => e.stopPropagation()}
+            placeholder={data.placeholder || "点击此处添加分镜描述..."}
+            className="w-full text-sm text-gray-800 resize-none bg-gray-50/50 border-gray-100 rounded-md p-2 mb-2 focus:outline-none focus:ring-1 focus:ring-blue-200 overflow-hidden"
+            style={{ minHeight: '1.5rem', maxHeight: '100px' }}
+            rows="1"
+            ref={el => {
+              if (el) {
+                el.style.height = 'auto';
+                el.style.height = `${Math.min(el.scrollHeight, 100)}px`;
+              }
+            }}
+            // 添加更多事件阻止传播，防止文本选择时拖动节点或移动画布
+            onMouseDown={e => {
+              e.stopPropagation();
+              data.onTextFocus && data.onTextFocus();
+            }} 
+            onTouchStart={e => {
+              e.stopPropagation();
+              data.onTextFocus && data.onTextFocus();
+            }}
+            onMouseMove={e => e.stopPropagation()}
+            onTouchMove={e => e.stopPropagation()}
+            draggable="false"
+          />
           
           {/* 视觉提示输入区 */}
           <div className="border-t border-gray-100 pt-2 mt-1">
@@ -866,9 +1015,25 @@ const StoryNode = ({ data, selected }) => {
             <textarea
               value={visualPrompt}
               onChange={handlePromptChange}
+              onBlur={(e) => {
+                data.onPromptBlur && data.onPromptBlur();
+              }}
+              onFocus={() => data.onPromptFocus && data.onPromptFocus()}
               placeholder="描述基础画面元素..."
               className="w-full p-2 text-xs resize-none border-gray-100 focus:border-gray-200 bg-gray-50/50 rounded-md min-h-[40px] focus:outline-none focus:ring-0 overflow-hidden"
               style={{ height: 'auto' }}
+              // 添加更多事件阻止传播，防止文本选择时拖动节点或移动画布
+              onMouseDown={e => {
+                e.stopPropagation();
+                data.onTextFocus && data.onTextFocus();
+              }} 
+              onTouchStart={e => {
+                e.stopPropagation();
+                data.onTextFocus && data.onTextFocus();
+              }}
+              onMouseMove={e => e.stopPropagation()}
+              onTouchMove={e => e.stopPropagation()}
+              draggable="false"
             />
           </div>
           
@@ -907,9 +1072,24 @@ const StoryNode = ({ data, selected }) => {
             <textarea
               value={regeneratePrompt}
               onChange={(e) => setRegeneratePrompt(e.target.value)}
+              onBlur={() => data.onTextBlur && data.onTextBlur()}
+              onFocus={() => data.onTextFocus && data.onTextFocus()}
+              onClick={e => e.stopPropagation()}
               placeholder="输入特定修改要求，例如：'添加更多光线'、'改为夜景'"
               className="w-full p-2 text-xs resize-none border-gray-100 focus:border-gray-200 bg-gray-50/50 rounded-md min-h-[60px] focus:outline-none focus:ring-0 mt-1 overflow-hidden"
               style={{ height: 'auto' }}
+              // 添加更多事件阻止传播，防止文本选择时拖动节点或移动画布
+              onMouseDown={e => {
+                e.stopPropagation();
+                data.onTextFocus && data.onTextFocus();
+              }} 
+              onTouchStart={e => {
+                e.stopPropagation();
+                data.onTextFocus && data.onTextFocus();
+              }}
+              onMouseMove={e => e.stopPropagation()}
+              onTouchMove={e => e.stopPropagation()}
+              draggable="false"
             />
           </div>
 

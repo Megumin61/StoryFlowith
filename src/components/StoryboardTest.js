@@ -140,10 +140,10 @@ const INITIAL_X_POSITION = 100; // 初始X坐标
 const INITIAL_Y_POSITION = 150; // Y坐标保持固定
 const LAYOUT_TRANSITION_DURATION = 300; // 布局过渡动画持续时间(毫秒)
 const NODE_WIDTH = {
-  COLLAPSED: 220,
-  EXPANDED: 320 // 增加展开时的宽度
+  COLLAPSED: 240,  // 从220增加到240，适应16:9比例
+  EXPANDED: 360    // 从320增加到360，适应16:9比例
 };
-const CARD_GAP = 30; // 卡片之间的实际间距（边到边的距离）
+const CARD_GAP = 30; // 卡片之间的实际间距（边到边的距离），从30增加到40，保持适当间距
 
 // 创建内部组件以使用ReactFlow hooks
 function StoryboardFlow({ initialStoryText, onClose }) {
@@ -156,6 +156,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
   const [referenceImageUrl, setReferenceImageUrl] = useState(styleUrls.style1); // 风格参考图URL
   const [apiStatus, setApiStatus] = useState('初始化中...'); // API状态信息
   const [lastError, setLastError] = useState(null); // 最后一次错误
+  const [nodesDraggable, setNodesDraggable] = useState(true); // 控制节点是否可拖动
+  const [paneMoveable, setPaneMoveable] = useState(true); // 控制画布是否可移动
   const reactFlowInstance = useReactFlow();
   const nodeStatesRef = useRef({}); // 用于跟踪节点状态
   const skipViewUpdateRef = useRef(false); // 用于跳过视图更新
@@ -288,6 +290,19 @@ function StoryboardFlow({ initialStoryText, onClose }) {
   useEffect(() => {
     setApiStatus(useRealApi ? '已启用API调用' : '已禁用API调用，使用测试图片');
   }, [useRealApi]);
+
+  // 处理文本框焦点变化，控制节点是否可拖动
+  const handleTextFocus = useCallback(() => {
+    console.log("文本框获得焦点，禁用节点拖动");
+    setNodesDraggable(false);
+    setPaneMoveable(false); // 同时禁用画布移动
+  }, []);
+
+  const handleTextBlur = useCallback(() => {
+    console.log("文本框失去焦点，启用节点拖动");
+    setNodesDraggable(true);
+    setPaneMoveable(true); // 同时启用画布移动
+  }, []);
 
   // 初始化时获取风格参考图的公网URL
   useEffect(() => {
@@ -487,7 +502,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       const createNodeData = (id, label) => ({
         id,
         label,
-        text: `新分镜`,
+        text: "", // 空文本
+        placeholder: "点击此处添加分镜描述...", // 添加placeholder提示
         image: null,
         imagePrompt: '',
         styleName: selectedStyle, // 使用当前选择的风格
@@ -500,6 +516,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         onGenerateImage: nodeHandlersRef.current.handleGenerateImage,
         onStateChange: handleNodeStateChange,
         onAddNode: handleAddNode,
+        onTextFocus: handleTextFocus,
+        onTextBlur: handleTextBlur,
         referenceImageUrl: referenceImageUrl // 添加风格参考图URL
       });
       
@@ -539,7 +557,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     setTimeout(() => {
       if (reactFlowInstance) {
         reactFlowInstance.fitView({ padding: 0.2 });
-      }
+          }
     }, 100);
   }, [rearrangeNodes, handleNodeStateChange, selectedStyle, referenceImageUrl, reactFlowInstance]);
 
@@ -553,7 +571,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       const createNodeData = (id, label) => ({
         id,
         label,
-        text: `新分镜`,
+        text: "", // 空文本
+        placeholder: "点击此处添加分镜描述...", // 添加placeholder提示
         image: null,
         imagePrompt: '',
         styleName: selectedStyle, // 使用当前选择的风格
@@ -566,6 +585,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         onGenerateImage: nodeHandlersRef.current.handleGenerateImage,
         onStateChange: handleNodeStateChange,
         onAddNode: handleAddNode,
+        onTextFocus: handleTextFocus,
+        onTextBlur: handleTextBlur,
         referenceImageUrl: referenceImageUrl // 添加风格参考图URL
       });
       
@@ -1105,14 +1126,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
   }, [rearrangeNodes, setNodes]);
 
   const getStorySegments = useCallback((initialText) => {
-    // 这里是模拟的故事情节，实际应用中应该从后端API获取
-    const segments = [
-      "张女士下班疲惫，站在超市生鲜区匆忙打开餐计划应用",
-      "她浏览应用推荐的菜谱，看到一道简单的蔬菜沙拉",
-      "张女士按照应用指导挑选新鲜的蔬菜和调料",
-      "回家后，她跟随应用的步骤指导开始准备晚餐",
-      "最终，她做出了美味的沙拉，感到满足和轻松"
-    ];
+    // 返回空文本的分镜段落
+    const segments = ["", "", "", "", ""];
     
     // 实际场景会根据初始文本动态生成
     return segments;
@@ -1471,6 +1486,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         id,
         label,
         text,
+        placeholder: "点击此处添加分镜描述...", // 添加placeholder提示
         image: null,
         imagePrompt: '',
         styleName: selectedStyle,
@@ -1483,6 +1499,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         onGenerateImage: nodeHandlersRef.current.handleGenerateImage,
         onStateChange: handleNodeStateChange,
         onAddNode: handleAddNode,
+        onTextFocus: handleTextFocus,
+        onTextBlur: handleTextBlur,
         referenceImageUrl: referenceImageUrl // 添加风格参考图URL
       });
       
@@ -1564,7 +1582,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             attributionPosition="bottom-right"
             zoomOnScroll={true}
             panOnScroll={false}
-            nodesDraggable={true}
+            nodesDraggable={nodesDraggable}
+            paneMoveable={paneMoveable} // 控制画布是否可移动
             elementsSelectable={true}
             snapToGrid={false}
             preventScrolling={true}
