@@ -216,16 +216,25 @@ const generateTextToImage = async (prompt) => {
  * 图生图API - 基于参考图和提示词生成新图像
  * @param {string} prompt - 文本提示词
  * @param {string|Array<string>} imageUrl - 参考图片URL(可以是HTTP或Data URL格式)
+ * @param {string} modelType - 模型类型，可选值为'generate'或'edit'，默认为'generate'
  * @returns {Object} - 返回结果，包含生成的图像和实际使用的参考图URL
  */
-const generateImageToImage = async (prompt, imageUrl) => {
+const generateImageToImage = async (prompt, imageUrl, modelType = 'generate') => {
   try {
     const startTime = new Date();
+    
+    // 根据modelType确定使用的模型
+    const modelEndpoint = modelType === 'edit' ? 
+      "fal-ai/flux-pro/kontext/max" : 
+      "fal-ai/flux-pro/kontext";
+    
+    console.log(`[图生图] 使用模型: ${modelEndpoint} (模式: ${modelType})`);
     
     // 日志记录
     debugLog('图生图函数收到的参数:', {
       prompt,
-      imageUrl: typeof imageUrl === 'string' ? (imageUrl.substring(0, 30) + '...') : '数组'
+      imageUrl: typeof imageUrl === 'string' ? (imageUrl.substring(0, 30) + '...') : '数组',
+      modelType
     });
     
     // 确保imageUrl是字符串
@@ -260,7 +269,7 @@ const generateImageToImage = async (prompt, imageUrl) => {
     
     // 尝试使用subscribe方法调用API
     try {
-      const result = await fal.subscribe("fal-ai/flux-pro/kontext/max", {
+      const result = await fal.subscribe(modelEndpoint, {
         input: input,
         logs: true,
         onQueueUpdate: (update) => {
@@ -291,7 +300,7 @@ const generateImageToImage = async (prompt, imageUrl) => {
       console.error('subscribe方法调用失败，尝试使用queue方法:', subscribeError);
       
       // 如果subscribe方法失败，尝试使用queue方法
-      const { request_id } = await fal.queue.submit("fal-ai/flux-pro/kontext/max", {
+      const { request_id } = await fal.queue.submit(modelEndpoint, {
         input: input
       });
       
@@ -306,7 +315,7 @@ const generateImageToImage = async (prompt, imageUrl) => {
         attempts++;
         
         // 获取请求状态
-        const status = await fal.queue.status("fal-ai/flux-pro/kontext/max", {
+        const status = await fal.queue.status(modelEndpoint, {
           requestId: request_id,
           logs: true
         });
@@ -317,7 +326,7 @@ const generateImageToImage = async (prompt, imageUrl) => {
         }
         
         if (status.status === "COMPLETED") {
-          result = await fal.queue.result("fal-ai/flux-pro/kontext/max", {
+          result = await fal.queue.result(modelEndpoint, {
             requestId: request_id
           });
           break;

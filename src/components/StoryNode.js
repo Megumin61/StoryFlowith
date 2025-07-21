@@ -324,8 +324,18 @@ const StoryNode = ({ data, selected }) => {
 
   const handleCardClick = () => {
     if (nodeState === NODE_STATES.COLLAPSED) {
-      setNodeState(NODE_STATES.EDITING);
+      safeSetNodeState(NODE_STATES.EDITING);
     }
+  };
+
+  // 安全状态转换函数，保存内容后再变更状态
+  const safeSetNodeState = (newState) => {
+    // 如果当前正在编辑中，先保存内容
+    if (nodeState === NODE_STATES.EDITING || nodeState === NODE_STATES.IMAGE_EDITING) {
+      handleTextSave();
+      handlePromptSave();
+    }
+    setNodeState(newState);
   };
 
   // 修改文本变化处理函数，减少DOM操作频率
@@ -398,6 +408,13 @@ const StoryNode = ({ data, selected }) => {
     }
   };
 
+  // 添加视觉描述保存函数
+  const handlePromptSave = () => {
+    if (visualPrompt !== data.imagePrompt) {
+      data.onUpdateNode?.(data.id, { imagePrompt: visualPrompt });
+    }
+  };
+
   // 修复handleDeleteNode函数，确保在没有事件对象时也能正常工作
   const handleDeleteNode = (e) => {
     // 添加默认值，避免在没有事件对象时报错
@@ -458,10 +475,11 @@ const StoryNode = ({ data, selected }) => {
       const apiCallStartTime = new Date();
       console.log(`[生成图像] 开始调用FalAI API, 时间: ${apiCallStartTime.toLocaleTimeString() + '.' + apiCallStartTime.getMilliseconds()}`);
       
-      // 调用FalAI的图生图API - 直接传入风格图像URL
+      // 调用FalAI的图生图API - 直接传入风格图像URL，使用生图模型(kontext)
       const response = await FalAI.generateImageToImage(
         prompt, // 使用翻译后的提示词
-        referenceImageUrl // 直接传入风格图像URL
+        referenceImageUrl, // 直接传入风格图像URL
+        'generate' // 指定使用生图模型
       );
 
       // 计算API调用耗时
@@ -629,17 +647,16 @@ const StoryNode = ({ data, selected }) => {
       // console.log(`[重新生成] 开始编辑图像，参考图: ${currentImageUrl}`);
       console.log(`[重新生成] 最终提示词: "${finalTranslatedPrompt}"`);
 
-      // 调用FalAI的图生图API，直接使用当前图像URL，确保useExampleImage为false
+      // 调用FalAI的图生图API，直接使用当前图像URL
       const apiStartTime = new Date();
       console.log(`[重新生成] 开始调用FalAI API, 时间: ${apiStartTime.toLocaleTimeString() + '.' + apiStartTime.getMilliseconds()}`);
       console.log(`[重新生成] 明确使用当前分镜图像作为参考图: ${currentImageUrl}`);
       
-      // 严格确保第三个参数为false，以便使用当前图片作为参考图
+      // 使用max模型进行图像编辑
       const response = await FalAI.generateImageToImage(
         finalTranslatedPrompt, // 使用翻译后的提示词
-        [currentImageUrl], // 使用当前图像URL作为参考图
-        false, // 明确设置为false，确保不使用示例图像而是使用当前图像
-        data.styleName || "style1" // 传递风格名称
+        currentImageUrl, // 使用当前图像URL作为参考图
+        'edit' // 指定使用编辑模型 (kontext/max)
       );
 
       const apiEndTime = new Date();
@@ -773,10 +790,11 @@ const StoryNode = ({ data, selected }) => {
       const apiCallStartTime = new Date();
       console.log(`[应用编辑] 开始调用FalAI API, 时间: ${apiCallStartTime.toLocaleTimeString() + '.' + apiCallStartTime.getMilliseconds()}`);
       
-      // 调用FalAI的图生图API，直接传递当前图像URL，无需检查格式
+      // 调用FalAI的图生图API，直接传递当前图像URL，使用编辑模型
       const response = await FalAI.generateImageToImage(
         finalTranslatedPrompt, // 使用翻译后的提示词
-        currentImageUrl // 直接传入当前图像URL
+        currentImageUrl, // 直接传入当前图像URL
+        'edit' // 指定使用编辑模型 (kontext/max)
       );
 
       // 计算API调用耗时
@@ -854,10 +872,11 @@ const StoryNode = ({ data, selected }) => {
   };
 
   const handleCancel = () => {
+    // 使用安全状态转换，不需要再手动保存
     if (nodeState === NODE_STATES.IMAGE_EDITING) {
-      setNodeState(NODE_STATES.IMAGE);
+      safeSetNodeState(NODE_STATES.IMAGE);
     } else {
-      setNodeState(NODE_STATES.COLLAPSED);
+      safeSetNodeState(NODE_STATES.COLLAPSED);
     }
   };
 
@@ -943,6 +962,7 @@ const StoryNode = ({ data, selected }) => {
           value={visualPrompt}
           onChange={handlePromptChange}
           onBlur={(e) => {
+            handlePromptSave();
             data.onPromptBlur && data.onPromptBlur();
           }}
           onFocus={() => data.onPromptFocus && data.onPromptFocus()}
@@ -1183,6 +1203,7 @@ const StoryNode = ({ data, selected }) => {
               value={visualPrompt}
               onChange={handlePromptChange}
               onBlur={(e) => {
+                handlePromptSave();
                 data.onPromptBlur && data.onPromptBlur();
               }}
               onFocus={() => data.onPromptFocus && data.onPromptFocus()}
