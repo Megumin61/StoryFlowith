@@ -219,32 +219,57 @@ const generateTextToImage = async (prompt) => {
  * @param {boolean} useExampleImage - 是否使用官方示例图像
  * @param {string} style - 风格名称，用于获取风格图片URL
  */
-const generateImageToImage = async (prompt, images = [], useExampleImage = true, style = 'style1') => {
+const generateImageToImage = async (prompt, images = [], useExampleImage = false, style = 'style1') => {
   try {
     const startTime = new Date();
     let imageUrl;
+    
+    // 添加详细日志记录参数
+    debugLog('图生图函数收到的参数:', {
+      prompt,
+      images,
+      useExampleImage,
+      style
+    });
+    console.log('[图生图] 函数收到参数:', {
+      prompt: prompt,
+      images: images,
+      useExampleImage: useExampleImage,
+      style: style
+    });
     
     // 确定使用哪个图像URL
     if (useExampleImage) {
       // 使用官方示例图像
       imageUrl = EXAMPLE_IMAGE_URL;
+      console.log('[图生图] 使用官方示例图像:', imageUrl);
     } else if (images && images.length > 0) {
       const firstImage = images[0];
+      console.log('[图生图] 检测到提供的图像:', firstImage);
       
       // 判断传入的是File/Blob对象还是URL字符串
       if (firstImage instanceof File || firstImage instanceof Blob) {
         // 如果是文件对象，直接上传到fal.ai
         debugLog('检测到图像文件对象，直接上传到fal.ai');
+        console.log('[图生图] 检测到图像文件对象，直接上传到fal.ai');
         imageUrl = await uploadImageToFal(firstImage);
-      } else if (typeof firstImage === 'string') {
-        // 直接使用URL字符串，不再尝试转换为Blob
+      } else if (typeof firstImage === 'string' && firstImage.trim() !== '') {
+        // 直接使用URL字符串，不再尝试转换为Blob，添加非空字符串检查
         debugLog('使用提供的URL字符串');
+        console.log('[图生图] 使用提供的URL字符串:', firstImage);
         imageUrl = firstImage;
+      } else {
+        // 添加额外日志记录无效图像类型的情况
+        console.error('[图生图] 无效的图像类型或空URL:', typeof firstImage, firstImage);
+        imageUrl = getStyleImageUrl(style);
+        console.log('[图生图] 回退到风格URL:', imageUrl);
       }
     } else {
       // 如果没有提供图像，使用风格URL
       debugLog('未提供图像，使用风格URL');
+      console.log('[图生图] 未提供图像，使用风格URL');
       imageUrl = getStyleImageUrl(style);
+      console.log('[图生图] 使用风格URL:', imageUrl);
     }
     
     if (!imageUrl) {

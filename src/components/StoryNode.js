@@ -89,14 +89,14 @@ const StoryNode = ({ data, selected }) => {
   // 基本状态
   const [nodeState, setNodeState] = useState(data.image ? NODE_STATES.IMAGE : NODE_STATES.COLLAPSED);
   const [nodeText, setNodeText] = useState(data.text || '');
-  const [visualPrompt, setVisualPrompt] = useState(data.imagePrompt || ''); // 不再以text作为fallback
+  // 只初始化为imagePrompt，不再和text关联
+  const [visualPrompt, setVisualPrompt] = useState(data.imagePrompt || '');
   const [regeneratePrompt, setRegeneratePrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [isHoveringLeftButton, setIsHoveringLeftButton] = useState(false);
   const [isHoveringRightButton, setIsHoveringRightButton] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [isTextareaActive, setIsTextareaActive] = useState(false); // 添加文本框活动状态
   
   // refs
   const textAreaRef = useRef(null);
@@ -140,11 +140,8 @@ const StoryNode = ({ data, selected }) => {
   useEffect(() => {
     controls.start({ opacity: 1, scale: 1 });
     setNodeText(data.text || '');
-    
-    // 只在有明确的imagePrompt时使用它，不再fallback到text
-    if (data.imagePrompt) {
-      setVisualPrompt(data.imagePrompt);
-    }
+    // 不再同步visualPrompt和text
+    setVisualPrompt(data.imagePrompt || '');
   }, [controls, data.text, data.imagePrompt]);
 
   // 修改副作用，避免ResizeObserver循环错误
@@ -292,42 +289,6 @@ const StoryNode = ({ data, selected }) => {
       }
     };
   }, []);
-
-  // 监听文本框活动状态
-  useEffect(() => {
-    // 当文本框活动时，通知父组件禁用拖动和平移
-    if (isTextareaActive) {
-      if (data.onTextFocus) {
-        console.log("文本框活动中，禁用拖动");
-        data.onTextFocus();
-      }
-      
-      // 确保文本框可以正常选择文本
-      document.body.style.userSelect = 'text';
-      document.body.style.webkitUserSelect = 'text';
-      document.body.style.msUserSelect = 'text';
-      document.body.style.pointerEvents = 'auto';
-    } else {
-      if (data.onTextBlur) {
-        console.log("文本框不再活动，启用拖动");
-        data.onTextBlur();
-      }
-      
-      // 恢复默认状态
-      document.body.style.userSelect = '';
-      document.body.style.webkitUserSelect = '';
-      document.body.style.msUserSelect = '';
-      document.body.style.pointerEvents = '';
-    }
-    
-    return () => {
-      // 清理函数，确保恢复默认状态
-      document.body.style.userSelect = '';
-      document.body.style.webkitUserSelect = '';
-      document.body.style.msUserSelect = '';
-      document.body.style.pointerEvents = '';
-    };
-  }, [isTextareaActive, data]);
 
   const addToast = (message, type = 'success') => {
     // 确保nodeRef已设置并且有getBoundingClientRect方法
@@ -602,23 +563,34 @@ const StoryNode = ({ data, selected }) => {
       // 使用当前图像作为参考图
       const currentImageUrl = data.image;
 
+      // 添加详细的日志记录
+      console.log('[重新生成] data对象内容:', {
+        id: data.id,
+        image: data.image,
+        imagePrompt: data.imagePrompt,
+        styleName: data.styleName
+      });
+      console.log(`[重新生成] 当前图像URL: ${currentImageUrl}`);
+
       if (!currentImageUrl) {
         throw new Error('当前图像URL不可用');
       }
 
       // 不再添加安全词到提示词
-      const finalTranslatedPrompt = translatedPrompt;
+      const finalTranslatedPrompt = `Don't reference the characters in the image, only reference the style of the image, generate a single storyboard frame for me(Do not have an outer frame around the image): ${translatedPrompt}`;
 
       console.log(`[重新生成] 开始编辑图像，参考图: ${currentImageUrl}`);
       console.log(`[重新生成] 最终提示词: "${finalTranslatedPrompt}"`);
 
-      // 调用FalAI的图生图API，直接使用当前图像URL
+      // 调用FalAI的图生图API，直接使用当前图像URL，确保useExampleImage为false
       const apiStartTime = new Date();
       console.log(`[重新生成] 开始调用FalAI API, 时间: ${apiStartTime.toLocaleTimeString() + '.' + apiStartTime.getMilliseconds()}`);
+      
+      // 严格确保第三个参数为false，以便使用当前图片作为参考图
       const response = await FalAI.generateImageToImage(
-        finalTranslatedPrompt, // 使用翻译后的提示词，不添加安全词
+        finalTranslatedPrompt, // 使用翻译后的提示词
         [currentImageUrl], // 使用当前图像URL
-        false, // 不使用示例图像
+        false, // 明确设置为false，确保不使用示例图像
         data.styleName || "style1" // 传递风格名称
       );
 
@@ -667,7 +639,8 @@ const StoryNode = ({ data, selected }) => {
         // 更新节点数据
         data.onUpdateNode?.(data.id, {
           image: imageUrl,
-        imagePrompt: finalPrompt,
+        // 不再用编辑提示覆盖原始视觉描述
+        // imagePrompt: finalPrompt,
         styleName: data.styleName // 保持原有风格
         });
 
@@ -710,6 +683,7 @@ const StoryNode = ({ data, selected }) => {
     <div className="flex flex-col p-4 min-h-[100px] cursor-pointer" onClick={handleCardClick}>
       <div className="text-xs text-gray-400 font-medium mb-2">{data.label}</div>
       <textarea
+        data-no-drag
         value={nodeText}
         readOnly
         placeholder={data.placeholder || "点击此处添加分镜描述..."}
@@ -737,29 +711,27 @@ const StoryNode = ({ data, selected }) => {
       
       <div className="text-xs text-gray-400 font-medium mb-2">{data.label}</div>
       <textarea
+        data-no-drag
         ref={textAreaRef}
         value={nodeText}
         onChange={handleTextChange}
         onBlur={(e) => {
           handleTextSave();
-          setIsTextareaActive(false);
+          data.onTextBlur && data.onTextBlur();
         }}
-        onFocus={() => setIsTextareaActive(true)}
-        onClick={e => {
-          e.stopPropagation();
-          setIsTextareaActive(true);
-        }}
+        onFocus={() => data.onTextFocus && data.onTextFocus()}
+        onClick={e => e.stopPropagation()}
         placeholder={data.placeholder || "在此处输入分镜描述..."}
         className="w-full text-sm text-gray-800 bg-gray-50/50 border-gray-100 rounded-md p-2 mb-4 resize-none focus:outline-none focus:ring-1 focus:ring-blue-200 overflow-hidden"
         style={{ height: 'auto' }}
         // 添加更多事件阻止传播，防止文本选择时拖动节点或移动画布
         onMouseDown={e => {
           e.stopPropagation();
-          setIsTextareaActive(true);
+          data.onTextFocus && data.onTextFocus();
         }} 
         onTouchStart={e => {
           e.stopPropagation();
-          setIsTextareaActive(true);
+          data.onTextFocus && data.onTextFocus();
         }}
         onMouseMove={e => e.stopPropagation()}
         onTouchMove={e => e.stopPropagation()}
@@ -769,26 +741,26 @@ const StoryNode = ({ data, selected }) => {
       <div className="border-t border-gray-100 pt-4 mt-2">
         <div className="text-xs text-gray-500 mb-2 font-medium">视觉描述</div>
         <textarea
+          data-no-drag
           ref={promptTextAreaRef}
           value={visualPrompt}
           onChange={handlePromptChange}
-          onBlur={() => setIsTextareaActive(false)}
-          onFocus={() => setIsTextareaActive(true)}
-          onClick={e => {
-            e.stopPropagation();
-            setIsTextareaActive(true);
+          onBlur={(e) => {
+            data.onPromptBlur && data.onPromptBlur();
           }}
+          onFocus={() => data.onPromptFocus && data.onPromptFocus()}
+          onClick={e => e.stopPropagation()}
           placeholder="描述画面的视觉元素..."
           className="w-full p-2 text-xs resize-none border-gray-100 focus:border-gray-200 bg-gray-50/50 rounded-md min-h-[60px] focus:outline-none focus:ring-0 overflow-hidden"
           style={{ height: 'auto' }}
           // 添加更多事件阻止传播，防止文本选择时拖动节点或移动画布
           onMouseDown={e => {
             e.stopPropagation();
-            setIsTextareaActive(true);
+            data.onTextFocus && data.onTextFocus();
           }} 
           onTouchStart={e => {
             e.stopPropagation();
-            setIsTextareaActive(true);
+            data.onTextFocus && data.onTextFocus();
           }}
           onMouseMove={e => e.stopPropagation()}
           onTouchMove={e => e.stopPropagation()}
@@ -895,19 +867,16 @@ const StoryNode = ({ data, selected }) => {
 
       <div className="p-3">
         <div className="text-xs text-gray-400 font-medium mb-1">{data.label}</div>
-        {/* 使用可编辑的textarea替代div，并添加自动调整高度属性 */}
         <textarea
+          data-no-drag
           value={nodeText}
           onChange={handleTextChange}
           onBlur={(e) => {
             handleTextSave();
-            setIsTextareaActive(false);
+            data.onTextBlur && data.onTextBlur();
           }}
-          onFocus={() => setIsTextareaActive(true)}
-          onClick={e => {
-            e.stopPropagation();
-            setIsTextareaActive(true);
-          }}
+          onFocus={() => data.onTextFocus && data.onTextFocus()}
+          onClick={e => e.stopPropagation()}
           placeholder={data.placeholder || "点击此处添加分镜描述..."}
           className="w-full text-sm text-gray-800 resize-none bg-gray-50/50 border-gray-100 rounded-md p-2 focus:outline-none focus:ring-1 focus:ring-blue-200 overflow-hidden"
           style={{ height: 'auto', minHeight: '1.5rem', maxHeight: '120px' }}
@@ -918,14 +887,13 @@ const StoryNode = ({ data, selected }) => {
               el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
             }
           }}
-          // 添加更多事件阻止传播，防止文本选择时拖动节点或移动画布
           onMouseDown={e => {
             e.stopPropagation();
-            setIsTextareaActive(true);
+            data.onTextFocus && data.onTextFocus();
           }} 
           onTouchStart={e => {
             e.stopPropagation();
-            setIsTextareaActive(true);
+            data.onTextFocus && data.onTextFocus();
           }}
           onMouseMove={e => e.stopPropagation()}
           onTouchMove={e => e.stopPropagation()}
@@ -977,6 +945,7 @@ const StoryNode = ({ data, selected }) => {
           <div className="text-xs text-gray-400 font-medium mb-1">{data.label}</div>
           {/* 使用可编辑的textarea替代div，并添加自动调整高度属性 */}
           <textarea
+            data-no-drag
             value={nodeText}
             onChange={handleTextChange}
             onBlur={(e) => {
@@ -1013,6 +982,7 @@ const StoryNode = ({ data, selected }) => {
           <div className="border-t border-gray-100 pt-2 mt-1">
             <div className="text-xs text-gray-400 font-medium mb-1">视觉描述</div>
             <textarea
+              data-no-drag
               value={visualPrompt}
               onChange={handlePromptChange}
               onBlur={(e) => {
@@ -1070,6 +1040,7 @@ const StoryNode = ({ data, selected }) => {
               </button>
             </div>
             <textarea
+              data-no-drag
               value={regeneratePrompt}
               onChange={(e) => setRegeneratePrompt(e.target.value)}
               onBlur={() => data.onTextBlur && data.onTextBlur()}

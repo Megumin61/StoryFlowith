@@ -78,14 +78,14 @@ const StyleSelector = ({ selectedStyle, onStyleChange }) => {
             }}
           />
         </div>
-        <span className="font-medium">{selectedStyleData.label}</span>
+        <span className="font-medium">画面参考</span>
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points={isOpen ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
         </svg>
       </button>
       
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 z-50 bg-white rounded-md shadow-lg border border-gray-200 w-64 p-2">
+        <div className="absolute top-full right-0 mt-1 z-50 bg-white rounded-md shadow-lg border border-gray-200 w-[180px] p-2">
           <div className="flex flex-col space-y-2">
             {styles.map(style => (
               <div 
@@ -100,26 +100,22 @@ const StyleSelector = ({ selectedStyle, onStyleChange }) => {
                   setIsOpen(false);
                 }}
               >
-                <div className="flex items-center">
-                  <div className="w-16 h-12 flex-shrink-0">
-                    <img 
-                      src={styleImages[style.id]} 
-                      alt={style.label}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        console.error(`风格图像加载失败: ${e.target.src}`);
-                        e.target.onerror = null;
-                        e.target.src = testImage;
-                      }}
-                    />
-                  </div>
-                  <div className="flex-grow px-2 py-1">
-                    <div className="text-sm font-medium">{style.label}</div>
-                  </div>
+                <div className="aspect-video w-full relative">
+                  <img 
+                    src={styleImages[style.id]} 
+                    alt={style.label}
+                    className="w-full h-full object-cover"
+                    title={style.label}
+                    onError={(e) => {
+                      console.error(`风格图像加载失败: ${e.target.src}`);
+                      e.target.onerror = null;
+                      e.target.src = testImage;
+                    }}
+                  />
                   {selectedStyle === style.id && (
-                    <div className="mr-2">
+                    <div className="absolute bottom-1 right-1">
                       <div className="bg-blue-500 text-white rounded-full p-1 shadow-lg">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                         </svg>
                       </div>
@@ -156,7 +152,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
   const [referenceImageUrl, setReferenceImageUrl] = useState(styleUrls.style1); // 风格参考图URL
   const [apiStatus, setApiStatus] = useState('初始化中...'); // API状态信息
   const [lastError, setLastError] = useState(null); // 最后一次错误
-  const [nodesDraggable, setNodesDraggable] = useState(true); // 控制节点是否可拖动
+  const [nodesDraggable, setNodesDraggable] = useState(false); // 控制节点是否可拖动，修改为默认禁用
   const [paneMoveable, setPaneMoveable] = useState(true); // 控制画布是否可移动
   const reactFlowInstance = useReactFlow();
   const nodeStatesRef = useRef({}); // 用于跟踪节点状态
@@ -299,9 +295,9 @@ function StoryboardFlow({ initialStoryText, onClose }) {
   }, []);
 
   const handleTextBlur = useCallback(() => {
-    console.log("文本框失去焦点，启用节点拖动");
-    setNodesDraggable(true);
-    setPaneMoveable(true); // 同时启用画布移动
+    console.log("文本框失去焦点，仅启用画布移动");
+    // 不再启用节点拖动功能
+    setPaneMoveable(true); // 只启用画布移动
   }, []);
 
   // 初始化时获取风格参考图的公网URL
@@ -426,49 +422,11 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     });
   }, [rearrangeNodes, nodes]);
 
-  // 处理节点拖动结束事件
+  // 处理节点拖动结束事件 - 由于禁用了节点拖动，此函数将不再被调用
   const handleNodeDragStop = useCallback((event, node) => {
-    console.log("节点拖动结束:", node.id, node.position);
-    
-    // 记录拖动后的完整位置到节点状态
-    if (nodeStatesRef.current[node.id]) {
-      nodeStatesRef.current[node.id].position = {...node.position};
-    } else {
-      nodeStatesRef.current[node.id] = {
-        state: 'default',
-        isExpanded: false,
-        position: {...node.position}
-      };
-    }
-    
-    // 更新节点位置但不重新排列X坐标，仅保持Y坐标的变化
-    setNodes(nds => {
-      // 先获取当前被拖动的节点
-      const draggedNode = nds.find(n => n.id === node.id);
-      if (!draggedNode) return nds;
-      
-      // 仅更新被拖动节点的Y坐标
-      const updatedNodes = nds.map(n => {
-        if (n.id === node.id) {
-          return {
-            ...n,
-            position: {
-              ...n.position,
-              y: node.position.y // 只更新Y坐标
-            }
-          };
-        }
-        return n;
-      });
-      
-      // 在下一帧中重新应用X坐标排列，确保布局一致
-      requestAnimationFrame(() => {
-        setNodes(currentNodes => rearrangeNodes(currentNodes));
-      });
-      
-      return updatedNodes;
-    });
-  }, [rearrangeNodes]);
+    console.log("节点拖动已禁用");
+    // 不执行任何拖动后的位置更新
+  }, []);
 
   // 将handleAddNode从useRef中移出，作为独立的useCallback函数
   const handleAddNode = useCallback((nodeId, position) => {
@@ -1583,7 +1541,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             zoomOnScroll={true}
             panOnScroll={false}
             nodesDraggable={nodesDraggable}
-            paneMoveable={paneMoveable} // 控制画布是否可移动
+            paneMoveable={paneMoveable}
+            nodeDraggable={event => !event?.target?.closest('[data-no-drag]')}
             elementsSelectable={true}
             snapToGrid={false}
             preventScrolling={true}
@@ -1623,7 +1582,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
               exit={{ opacity: 0 }}
             >
               <motion.div
-                className="bg-white p-6 rounded-lg shadow-xl max-w-sm"
+                className="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full"
                 initial={{ scale: 0.9 }}
                 animate={{ scale: 1 }}
               >
@@ -1631,6 +1590,23 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                   <AlertTriangle className="text-yellow-500 mr-2" size={24} />
                   <h3 className="text-lg font-semibold">确认全局风格变更</h3>
                 </div>
+                
+                {/* 添加风格图像预览 */}
+                <div className="mb-4">
+                  <div className="text-sm text-gray-600 mb-2">选择的参考风格：</div>
+                  <div className="aspect-[16/9] max-w-[250px] mx-auto border border-gray-200 rounded-md overflow-hidden">
+                    <img 
+                      src={styleImages[selectedStyle]} 
+                      alt="参考风格图"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = testImage;
+                      }}
+                    />
+                  </div>
+                </div>
+                
                 <p className="text-sm text-gray-600 mb-6">应用新风格到所有图像？这将重新生成所有卡片。</p>
                 <div className="flex justify-end space-x-3">
                   <button
