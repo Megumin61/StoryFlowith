@@ -458,15 +458,10 @@ const StoryNode = ({ data, selected }) => {
       const apiCallStartTime = new Date();
       console.log(`[生成图像] 开始调用FalAI API, 时间: ${apiCallStartTime.toLocaleTimeString() + '.' + apiCallStartTime.getMilliseconds()}`);
       
-      // 指定使用 fal-ai/flux-pro/kontext 模型用于初始图像生成
-      const modelName = "fal-ai/flux-pro/kontext";
-      console.log(`[生成图像] 使用模型: ${modelName}`);
-      
-      // 调用FalAI的图生图API - 直接传入风格图像URL和模型名称
+      // 调用FalAI的图生图API - 直接传入风格图像URL
       const response = await FalAI.generateImageToImage(
         prompt, // 使用翻译后的提示词
-        referenceImageUrl, // 直接传入风格图像URL
-        modelName // 指定使用基础模型
+        referenceImageUrl // 直接传入风格图像URL
       );
 
       // 计算API调用耗时
@@ -634,31 +629,22 @@ const StoryNode = ({ data, selected }) => {
       // console.log(`[重新生成] 开始编辑图像，参考图: ${currentImageUrl}`);
       console.log(`[重新生成] 最终提示词: "${finalTranslatedPrompt}"`);
 
-      // 指定使用 fal-ai/flux-pro/kontext/max 模型进行图像重新生成
-      const modelName = "fal-ai/flux-pro/kontext/max";
-      console.log(`[重新生成] 使用增强模型: ${modelName}`);
-      
-      // 调用FalAI的图生图API
+      // 调用FalAI的图生图API，直接使用当前图像URL，确保useExampleImage为false
       const apiStartTime = new Date();
       console.log(`[重新生成] 开始调用FalAI API, 时间: ${apiStartTime.toLocaleTimeString() + '.' + apiStartTime.getMilliseconds()}`);
       console.log(`[重新生成] 明确使用当前分镜图像作为参考图: ${currentImageUrl}`);
       
+      // 严格确保第三个参数为false，以便使用当前图片作为参考图
       const response = await FalAI.generateImageToImage(
         finalTranslatedPrompt, // 使用翻译后的提示词
-        currentImageUrl, // 使用当前图像URL作为参考图
-        modelName // 指定使用增强模型
+        [currentImageUrl], // 使用当前图像URL作为参考图
+        false, // 明确设置为false，确保不使用示例图像而是使用当前图像
+        data.styleName || "style1" // 传递风格名称
       );
 
       const apiEndTime = new Date();
       const apiTime = (apiEndTime - apiStartTime) / 1000;
       console.log(`[重新生成] API调用完成, 用时: ${apiTime}秒, 时间: ${apiEndTime.toLocaleTimeString() + '.' + apiEndTime.getMilliseconds()}`);
-      
-      if (response.referenceImageUrl) {
-        console.log('[重新生成] API实际使用的参考图URL:', response.referenceImageUrl);
-      }
-      if (response.model) {
-        console.log('[重新生成] API实际使用的模型:', response.model);
-      }
       
       // 检查响应状态
       console.log('[重新生成] 收到响应:', JSON.stringify(response));
@@ -787,15 +773,10 @@ const StoryNode = ({ data, selected }) => {
       const apiCallStartTime = new Date();
       console.log(`[应用编辑] 开始调用FalAI API, 时间: ${apiCallStartTime.toLocaleTimeString() + '.' + apiCallStartTime.getMilliseconds()}`);
       
-      // 指定使用 fal-ai/flux-pro/kontext/max 模型进行图像编辑
-      const modelName = "fal-ai/flux-pro/kontext/max";
-      console.log(`[应用编辑] 使用增强模型: ${modelName}`);
-      
-      // 调用FalAI的图生图API，直接传递当前图像URL和模型名称
+      // 调用FalAI的图生图API，直接传递当前图像URL，无需检查格式
       const response = await FalAI.generateImageToImage(
         finalTranslatedPrompt, // 使用翻译后的提示词
-        currentImageUrl, // 直接传入当前图像URL
-        modelName // 指定使用增强模型
+        currentImageUrl // 直接传入当前图像URL
       );
 
       // 计算API调用耗时
@@ -805,9 +786,6 @@ const StoryNode = ({ data, selected }) => {
       
       if (response.referenceImageUrl) {
         console.log('[应用编辑] API实际使用的参考图URL:', response.referenceImageUrl);
-      }
-      if (response.model) {
-        console.log('[应用编辑] API实际使用的模型:', response.model);
       }
       
       // 检查响应状态
