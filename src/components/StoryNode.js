@@ -29,6 +29,14 @@ const Toast = ({ message, type = 'success', onClose }) => {
   );
 };
 
+// 计算时间工具函数
+const calculateTime = (startTime, endTime) => {
+  const timeDiff = endTime - startTime;
+  const seconds = Math.floor(timeDiff / 1000);
+  const milliseconds = timeDiff % 1000;
+  return `${seconds}.${milliseconds.toString().padStart(3, '0')}秒`;
+};
+
 // 提取可复用动画配置
 const nodeAnimations = {
   initial: { scale: 0.9, opacity: 0 },
@@ -97,6 +105,11 @@ const StoryNode = ({ data, selected }) => {
   const [isHoveringLeftButton, setIsHoveringLeftButton] = useState(false);
   const [isHoveringRightButton, setIsHoveringRightButton] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  
+  // 移除调试面板状态
+  // const [showDebugPanel, setShowDebugPanel] = useState(false);
+  // const [debugReferenceImage, setDebugReferenceImage] = useState('');
+  // const [debugGeneratedImage, setDebugGeneratedImage] = useState('');
   
   // refs
   const textAreaRef = useRef(null);
@@ -437,24 +450,29 @@ const StoryNode = ({ data, selected }) => {
       const styleName = data.styleName || "style1"; // 获取风格名称
       console.log(`[生成图像] 风格名称: ${styleName}`);
 
-      // 获取风格图像URL
+      // 获取风格图像URL - 业务逻辑移到这里
       const referenceImageUrl = FalAI.STYLE_URLS[styleName] || FalAI.STYLE_URLS.style1;
       console.log(`[生成图像] 使用风格图像URL: ${referenceImageUrl}`);
 
-      // 调用FalAI的图生图API
-      const apiStartTime = new Date();
-      console.log(`[生成图像] 开始调用FalAI API, 时间: ${apiStartTime.toLocaleTimeString() + '.' + apiStartTime.getMilliseconds()}`);
+      // 记录API调用开始时间
+      const apiCallStartTime = new Date();
+      console.log(`[生成图像] 开始调用FalAI API, 时间: ${apiCallStartTime.toLocaleTimeString() + '.' + apiCallStartTime.getMilliseconds()}`);
+      
+      // 调用FalAI的图生图API - 直接传入风格图像URL
       const response = await FalAI.generateImageToImage(
-        prompt, // 这里使用了翻译后的提示词
-        [referenceImageUrl], // 使用风格图像URL
-        false, // 不使用示例图像
-        styleName // 传递风格名称
+        prompt, // 使用翻译后的提示词
+        referenceImageUrl // 直接传入风格图像URL
       );
 
-      const apiEndTime = new Date();
-      const apiTime = (apiEndTime - apiStartTime) / 1000;
-      console.log(`[生成图像] API调用完成, 用时: ${apiTime}秒, 时间: ${apiEndTime.toLocaleTimeString() + '.' + apiEndTime.getMilliseconds()}`);
+      // 计算API调用耗时
+      const apiCallEndTime = new Date();
+      const apiCallDuration = calculateTime(apiCallStartTime, apiCallEndTime);
+      console.log(`[生成图像] API调用完成, 用时: ${apiCallDuration}`);
       
+      if (response.referenceImageUrl) {
+        console.log('[生成图像] API实际使用的参考图URL:', response.referenceImageUrl);
+      }
+
       // 检查响应状态
       console.log('[生成图像] 收到响应:', JSON.stringify(response));
         
@@ -464,24 +482,24 @@ const StoryNode = ({ data, selected }) => {
         throw new Error('未获取到生成的图像URL');
       }
 
-      // 获取生成的图像URL
-      const imageUrl = response.data.images[0];
-      const endTime = new Date();
-      const timeTaken = (endTime - startTime) / 1000;
-      console.log(`[生成图像] 图像生成成功: ${imageUrl}, 总耗时: ${timeTaken}秒, 结束时间: ${endTime.toLocaleTimeString() + '.' + endTime.getMilliseconds()}`);
-
+      // 获取生成的图像URL - 从对象中提取url属性
+      const imageUrl = response.data.images[0].url;
+      console.log('[生成图像] 提取的图像URL:', imageUrl);
+      
+      // 记录图像加载开始时间
+      const imageLoadStartTime = new Date();
+      console.log(`[生成图像] 开始加载图像, 时间: ${imageLoadStartTime.toLocaleTimeString() + '.' + imageLoadStartTime.getMilliseconds()}`);
+      
       // 创建新图像对象并预加载，确保图像已经加载完成再更新UI
       const img = new Image();
       img.src = imageUrl;
       
       // 等待图像加载完成或加载失败
-      const loadStartTime = new Date();
-      console.log(`[生成图像] 开始加载图像, 时间: ${loadStartTime.toLocaleTimeString() + '.' + loadStartTime.getMilliseconds()}`);
       await new Promise((resolve) => {
         img.onload = () => {
-          const loadEndTime = new Date();
-          const loadTime = (loadEndTime - loadStartTime) / 1000;
-          console.log(`[生成图像] 图像预加载成功, 用时: ${loadTime}秒, 时间: ${loadEndTime.toLocaleTimeString() + '.' + loadEndTime.getMilliseconds()}`);
+          const imageLoadEndTime = new Date();
+          const imageLoadDuration = calculateTime(imageLoadStartTime, imageLoadEndTime);
+          console.log(`[生成图像] 图像预加载成功, 用时: ${imageLoadDuration}`);
           resolve();
         };
         img.onerror = () => {
@@ -493,14 +511,21 @@ const StoryNode = ({ data, selected }) => {
         setTimeout(resolve, 3000);
       });
 
-        // 更新节点数据
-        data.onUpdateNode?.(data.id, {
-          image: imageUrl,
+      // 计算总耗时
+      const endTime = new Date();
+      const totalDuration = calculateTime(startTime, endTime);
+      console.log(`[生成图像] 图像生成完整流程完成，总耗时: ${totalDuration}`);
+      console.log(`[生成图像] API调用耗时: ${apiCallDuration} | 图像加载耗时: ${calculateTime(imageLoadStartTime, endTime)}`);
+      console.log(`[生成图像] 从API调用到图像返回总耗时: ${calculateTime(apiCallStartTime, endTime)}`);
+
+      // 更新节点数据
+      data.onUpdateNode?.(data.id, {
+        image: imageUrl,
         imagePrompt: visualPrompt,
         styleName: styleName // 保存风格名称
-        });
+      });
 
-        setNodeState(NODE_STATES.IMAGE);
+      setNodeState(NODE_STATES.IMAGE);
     } catch (error) {
       console.error("[生成图像] 图像生成失败:", error);
       console.error('[生成图像] 错误详情:', error);
@@ -561,36 +586,59 @@ const StoryNode = ({ data, selected }) => {
 
 
       // 使用当前图像作为参考图
-      const currentImageUrl = data.image;
+      let currentImageUrl = data.image;
+
+      // 完整打印当前分镜图像URL，用于调试
+      console.log('[重新生成] 当前分镜图像URL:', currentImageUrl);
+      
+      // 更新调试面板的参考图像
+      // setDebugReferenceImage(currentImageUrl);
+      // setShowDebugPanel(true);
 
       // 添加详细的日志记录
       console.log('[重新生成] data对象内容:', {
         id: data.id,
-        image: data.image,
+        image: data.image ? (data.image.substring(0, 30) + '...') : 'undefined', // 只打印部分URL
         imagePrompt: data.imagePrompt,
         styleName: data.styleName
       });
-      console.log(`[重新生成] 当前图像URL: ${currentImageUrl}`);
-
-      if (!currentImageUrl) {
-        throw new Error('当前图像URL不可用');
+      
+      // 检查是否是base64格式的图像数据，或者是否是HTTP链接
+      if (currentImageUrl) {
+        if (currentImageUrl.startsWith('data:')) {
+          console.log('[重新生成] 检测到Data URL格式图像，需要使用风格图像替代');
+          // 如果是base64格式，退回到使用风格图像
+          currentImageUrl = FalAI.STYLE_URLS[data.styleName || 'style1'] || FalAI.STYLE_URLS.style1;
+          console.log(`[重新生成] 改用风格参考图: ${currentImageUrl}`);
+        } else if (currentImageUrl.startsWith('http')) {
+          console.log('[重新生成] 使用HTTP格式的当前分镜图像作为参考图');
+        } else {
+          console.log('[重新生成] 检测到非标准图像URL格式，需要使用风格图像替代');
+          currentImageUrl = FalAI.STYLE_URLS[data.styleName || 'style1'] || FalAI.STYLE_URLS.style1;
+          console.log(`[重新生成] 改用风格参考图: ${currentImageUrl}`);
+        }
+      } else {
+        console.log('[重新生成] 当前图像URL不可用，使用风格图像替代');
+        currentImageUrl = FalAI.STYLE_URLS[data.styleName || 'style1'] || FalAI.STYLE_URLS.style1;
+        console.log(`[重新生成] 使用风格参考图: ${currentImageUrl}`);
       }
 
       // 不再添加安全词到提示词
       const finalTranslatedPrompt = `Don't reference the characters in the image, only reference the style of the image, generate a single storyboard frame for me(Do not have an outer frame around the image): ${translatedPrompt}`;
 
-      console.log(`[重新生成] 开始编辑图像，参考图: ${currentImageUrl}`);
+      // console.log(`[重新生成] 开始编辑图像，参考图: ${currentImageUrl}`);
       console.log(`[重新生成] 最终提示词: "${finalTranslatedPrompt}"`);
 
       // 调用FalAI的图生图API，直接使用当前图像URL，确保useExampleImage为false
       const apiStartTime = new Date();
       console.log(`[重新生成] 开始调用FalAI API, 时间: ${apiStartTime.toLocaleTimeString() + '.' + apiStartTime.getMilliseconds()}`);
+      console.log(`[重新生成] 明确使用当前分镜图像作为参考图: ${currentImageUrl}`);
       
       // 严格确保第三个参数为false，以便使用当前图片作为参考图
       const response = await FalAI.generateImageToImage(
         finalTranslatedPrompt, // 使用翻译后的提示词
-        [currentImageUrl], // 使用当前图像URL
-        false, // 明确设置为false，确保不使用示例图像
+        [currentImageUrl], // 使用当前图像URL作为参考图
+        false, // 明确设置为false，确保不使用示例图像而是使用当前图像
         data.styleName || "style1" // 传递风格名称
       );
 
@@ -607,11 +655,23 @@ const StoryNode = ({ data, selected }) => {
         throw new Error('未获取到生成的图像URL');
       }
 
-      // 获取生成的图像URL
-      const imageUrl = response.data.images[0];
-      const endTime = new Date();
-      const timeTaken = (endTime - startTime) / 1000;
-      console.log(`[重新生成] 图像编辑成功: ${imageUrl}, 总耗时: ${timeTaken}秒, 结束时间: ${endTime.toLocaleTimeString() + '.' + endTime.getMilliseconds()}`);
+      // 获取生成的图像URL - 从对象中提取url属性
+      const imageUrl = response.data.images[0].url;
+      console.log('[重新生成] 提取的图像URL:', imageUrl);
+      
+      // 更新调试面板的生成图像
+      // setDebugGeneratedImage(imageUrl);
+
+      // 打印完整响应和图像URL格式，便于调试
+      console.log('[重新生成] 完整响应:', response);
+      console.log('[重新生成] 返回的图像URL格式:', {
+        type: typeof imageUrl,
+        isString: typeof imageUrl === 'string',
+        value: imageUrl
+      });
+      
+      // 更新调试面板的生成图像
+      // setDebugGeneratedImage(imageUrl);
 
       // 创建新图像对象并预加载，确保图像已经加载完成再更新UI
       const img = new Image();
@@ -648,6 +708,143 @@ const StoryNode = ({ data, selected }) => {
     } catch (error) {
       console.error("[重新生成] 图像编辑失败:", error);
       console.error('[重新生成] 错误详情:', error);
+
+      // 如果没有找到图像URL，显示错误并回到编辑状态
+      setNodeState(NODE_STATES.IMAGE_EDITING);
+    }
+
+    setIsGenerating(false);
+  };
+
+  // 添加一个专门用于应用编辑的函数，强制使用当前分镜图像
+  const handleApplyEdit = async () => {
+    setNodeState(NODE_STATES.GENERATING);
+    setIsGenerating(true);
+    const startTime = new Date();
+    const startTimeStr = startTime.toLocaleTimeString() + '.' + startTime.getMilliseconds();
+    console.log(`[应用编辑] 开始应用编辑到图像, 时间: ${startTimeStr}`);
+
+    try {
+      // 构建提示词
+      const userPrompt = regeneratePrompt || visualPrompt;
+      
+      // 不再添加安全提示词
+      const finalPrompt = userPrompt;
+      
+      console.log(`[应用编辑] 原始提示词: "${finalPrompt}"`);
+      
+      // 翻译编辑提示词为英文
+      let translatedPrompt;
+      const translateStartTime = new Date();
+      console.log(`[应用编辑] 开始翻译提示词, 时间: ${translateStartTime.toLocaleTimeString() + '.' + translateStartTime.getMilliseconds()}`);
+      try {
+        translatedPrompt = await YoudaoTranslate.zhToEn(finalPrompt);
+        const translateEndTime = new Date();
+        const translateTime = (translateEndTime - translateStartTime) / 1000;
+        console.log(`[应用编辑] 翻译成功: "${translatedPrompt}", 用时: ${translateTime}秒, 时间: ${translateEndTime.toLocaleTimeString() + '.' + translateEndTime.getMilliseconds()}`);
+      } catch (error) {
+        console.error('[应用编辑] 翻译失败:', error);
+        translatedPrompt = finalPrompt; // 翻译失败 fallback 到原文
+        console.warn(`[应用编辑] 使用原文作为提示词: "${translatedPrompt}"`);
+      }
+
+      // 强制使用当前图像作为参考图，无论何种格式
+      let currentImageUrl = data.image;
+
+      // 完整打印当前分镜图像URL，用于调试
+      console.log('[应用编辑] 当前分镜图像URL:', currentImageUrl);
+
+      // 确保有可用的图像URL
+      if (!currentImageUrl) {
+        console.error('[应用编辑] 当前分镜没有可用的图像URL，无法应用编辑');
+        addToast('当前分镜图像无法编辑，请先生成图像', 'error');
+        setNodeState(NODE_STATES.IMAGE_EDITING);
+        setIsGenerating(false);
+        return;
+      }
+
+      // 应用编辑时直接使用翻译后的提示词，无需添加前缀
+      const finalTranslatedPrompt = translatedPrompt;
+
+      console.log(`[应用编辑] 最终提示词: "${finalTranslatedPrompt}"`);
+      console.log(`[应用编辑] 使用当前分镜图像作为参考图`);
+
+      // 记录API调用开始时间
+      const apiCallStartTime = new Date();
+      console.log(`[应用编辑] 开始调用FalAI API, 时间: ${apiCallStartTime.toLocaleTimeString() + '.' + apiCallStartTime.getMilliseconds()}`);
+      
+      // 调用FalAI的图生图API，直接传递当前图像URL，无需检查格式
+      const response = await FalAI.generateImageToImage(
+        finalTranslatedPrompt, // 使用翻译后的提示词
+        currentImageUrl // 直接传入当前图像URL
+      );
+
+      // 计算API调用耗时
+      const apiCallEndTime = new Date();
+      const apiCallDuration = calculateTime(apiCallStartTime, apiCallEndTime);
+      console.log(`[应用编辑] API调用完成, 用时: ${apiCallDuration}`);
+      
+      if (response.referenceImageUrl) {
+        console.log('[应用编辑] API实际使用的参考图URL:', response.referenceImageUrl);
+      }
+      
+      // 检查响应状态
+      console.log('[应用编辑] 收到响应:', JSON.stringify(response));
+        
+      // 从fal.ai API响应中获取图像URL
+      if (!response || !response.data || !response.data.images || !response.data.images[0]) {
+        console.error('[应用编辑] API响应格式不正确:', response);
+        throw new Error('未获取到生成的图像URL');
+      }
+
+      // 获取生成的图像URL - 从对象中提取url属性
+      const imageUrl = response.data.images[0].url;
+      console.log('[应用编辑] 提取的图像URL:', imageUrl);
+      
+      // 记录图像加载开始时间
+      const imageLoadStartTime = new Date();
+      console.log(`[应用编辑] 开始加载图像, 时间: ${imageLoadStartTime.toLocaleTimeString() + '.' + imageLoadStartTime.getMilliseconds()}`);
+
+      // 创建新图像对象并预加载，确保图像已经加载完成再更新UI
+      const img = new Image();
+      img.src = imageUrl;
+      
+      // 等待图像加载完成或加载失败
+      await new Promise((resolve) => {
+        img.onload = () => {
+          const imageLoadEndTime = new Date();
+          const imageLoadDuration = calculateTime(imageLoadStartTime, imageLoadEndTime);
+          console.log(`[应用编辑] 图像预加载成功, 用时: ${imageLoadDuration}`);
+          resolve();
+        };
+        img.onerror = () => {
+          console.warn('[应用编辑] 图像预加载失败，将使用原始URL');
+          resolve();
+        };
+        
+        // 设置超时，防止无限等待
+        setTimeout(resolve, 3000);
+      });
+
+      // 计算总耗时
+      const endTime = new Date();
+      const totalDuration = calculateTime(startTime, endTime);
+      console.log(`[应用编辑] 图像编辑完整流程完成，总耗时: ${totalDuration}`);
+      console.log(`[应用编辑] API调用耗时: ${apiCallDuration} | 图像加载耗时: ${calculateTime(imageLoadStartTime, endTime)}`);
+      console.log(`[应用编辑] 从API调用到图像返回总耗时: ${calculateTime(apiCallStartTime, endTime)}`);
+
+      // 更新节点数据
+      data.onUpdateNode?.(data.id, {
+        image: imageUrl,
+        // 不再用编辑提示覆盖原始视觉描述
+        // imagePrompt: finalPrompt,
+        styleName: data.styleName // 保持原有风格
+      });
+
+      setNodeState(NODE_STATES.IMAGE);
+    } catch (error) {
+      console.error("[应用编辑] 图像编辑失败:", error);
+      console.error('[应用编辑] 错误详情:', error);
 
       // 如果没有找到图像URL，显示错误并回到编辑状态
       setNodeState(NODE_STATES.IMAGE_EDITING);
@@ -1066,7 +1263,7 @@ const StoryNode = ({ data, selected }) => {
 
           <div className="flex bg-gray-50 p-2 border-t border-gray-100">
             <button
-              onClick={handleRegenerateImage}
+              onClick={handleApplyEdit}
               className="w-full py-1.5 text-xs text-white bg-gray-800 hover:bg-gray-700 rounded-md flex items-center justify-center"
             >
               <RefreshCw size={12} className="mr-1" />
@@ -1097,99 +1294,99 @@ const StoryNode = ({ data, selected }) => {
 
   // 修改renderNode函数，确保删除按钮不被感应区域挡住，同时保持悬浮添加分镜功能
   const renderNode = () => (
-    <motion.div
-      ref={nodeRef}
-      className={`
-        bg-white rounded-[20px]
-        ${selected ? 'ring-2 ring-blue-500' : ''}
-        shadow-[0_4px_12px_rgba(0,0,0,0.1)]
-        relative
-      `}
-      style={{
-        width: nodeState === NODE_STATES.COLLAPSED ? NODE_WIDTH.COLLAPSED + 'px' : NODE_WIDTH.EXPANDED + 'px',
-        transformOrigin: 'center center',
-      }}
-      animate={controls}
-      layout="position"
-      transition={{
-        type: "spring",
-        stiffness: 300,
-        damping: 30,
-        duration: 0.3
-      }}
-      data-state={nodeState}
-      data-expanded={nodeState !== NODE_STATES.COLLAPSED ? 'true' : 'false'}
-      data-node-id={data.id}
-      data-node-index={data.nodeIndex || 0}
-      data-node-width={nodeState === NODE_STATES.COLLAPSED ? NODE_WIDTH.COLLAPSED : NODE_WIDTH.EXPANDED}
-    >
-      {/* 节点内容 - 不包含在z-index容器中 */}
-      {renderNodeContent()}
-
-      {/* 卡片下方的扩展编辑区域 */}
-      <div className="absolute left-0 right-0 w-full z-40">
-        <AnimatePresence>
-          {nodeState === NODE_STATES.IMAGE_EDITING && (
-            <motion.div
-              className="absolute top-0 left-0 w-full z-40"
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              style={{ pointerEvents: 'auto' }}
-            >
-              {/* 这里不再需要重复编辑区域，因为我们已经在renderImageEditingCard中实现了 */}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* 左侧感应区域 - 确保高z-index */}
-      <div
-        ref={leftSideRef}
-        className="absolute left-0 top-0 bottom-0 w-6 z-40"
-        onMouseEnter={() => setIsHoveringLeftButton(true)}
-        onMouseLeave={() => setIsHoveringLeftButton(false)}
-      />
-
-      {/* 左侧添加按钮 - 放在节点外部，保持高z-index */}
-      <div ref={leftButtonRef} className="absolute left-0 top-0 bottom-0 z-50 pointer-events-auto" style={{ width: '0' }}>
-        <AddNodeButton
-          position="left"
-          onClick={handleAddNode}
-          style={{
-            opacity: isHoveringLeftButton ? 1 : 0,
-            pointerEvents: isHoveringLeftButton ? 'auto' : 'none'
-          }}
-        />
-      </div>
-
-      {/* 右侧感应区域 - 确保高z-index */}
-      <div
-        ref={rightSideRef}
-        className="absolute right-0 top-0 bottom-0 w-6 z-40"
-        onMouseEnter={() => setIsHoveringRightButton(true)}
-        onMouseLeave={() => setIsHoveringRightButton(false)}
-      />
-
-      {/* 右侧添加按钮 - 放在节点外部，保持高z-index */}
-      <div ref={rightButtonRef} className="absolute right-0 top-0 bottom-0 z-50 pointer-events-auto" style={{ width: '0' }}>
-        <AddNodeButton
-          position="right"
-          onClick={handleAddNode}
-          style={{
-            opacity: isHoveringRightButton ? 1 : 0,
-            pointerEvents: isHoveringRightButton ? 'auto' : 'none'
-          }}
-        />
-      </div>
-    </motion.div>
-  );
-
-  // 返回节点和Toast，Toast放在外部
-  return (
     <>
-      {renderNode()}
+      <motion.div
+        ref={nodeRef}
+        className={`
+          bg-white rounded-[20px]
+          ${selected ? 'ring-2 ring-blue-500' : ''}
+          shadow-[0_4px_12px_rgba(0,0,0,0.1)]
+          relative
+        `}
+        style={{
+          width: nodeState === NODE_STATES.COLLAPSED ? NODE_WIDTH.COLLAPSED + 'px' : NODE_WIDTH.EXPANDED + 'px',
+          transformOrigin: 'center center',
+        }}
+        animate={controls}
+        layout="position"
+        transition={{
+          type: "spring",
+          stiffness: 300,
+          damping: 30,
+          duration: 0.3
+        }}
+        data-state={nodeState}
+        data-expanded={nodeState !== NODE_STATES.COLLAPSED ? 'true' : 'false'}
+        data-node-id={data.id}
+        data-node-index={data.nodeIndex || 0}
+        data-node-width={nodeState === NODE_STATES.COLLAPSED ? NODE_WIDTH.COLLAPSED : NODE_WIDTH.EXPANDED}
+      >
+
+        
+        {/* 节点内容 - 不包含在z-index容器中 */}
+        {renderNodeContent()}
+
+        {/* 卡片下方的扩展编辑区域 */}
+        <div className="absolute left-0 right-0 w-full z-40">
+          <AnimatePresence>
+            {nodeState === NODE_STATES.IMAGE_EDITING && (
+              <motion.div
+                className="absolute top-0 left-0 w-full z-40"
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                style={{ pointerEvents: 'auto' }}
+              >
+                {/* 这里不再需要重复编辑区域，因为我们已经在renderImageEditingCard中实现了 */}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* 左侧感应区域 - 确保高z-index */}
+        <div
+          ref={leftSideRef}
+          className="absolute left-0 top-0 bottom-0 w-6 z-40"
+          onMouseEnter={() => setIsHoveringLeftButton(true)}
+          onMouseLeave={() => setIsHoveringLeftButton(false)}
+        />
+
+        {/* 左侧添加按钮 - 放在节点外部，保持高z-index */}
+        <div ref={leftButtonRef} className="absolute left-0 top-0 bottom-0 z-50 pointer-events-auto" style={{ width: '0' }}>
+          <AddNodeButton
+            position="left"
+            onClick={handleAddNode}
+            style={{
+              opacity: isHoveringLeftButton ? 1 : 0,
+              pointerEvents: isHoveringLeftButton ? 'auto' : 'none'
+            }}
+          />
+        </div>
+
+        {/* 右侧感应区域 - 确保高z-index */}
+        <div
+          ref={rightSideRef}
+          className="absolute right-0 top-0 bottom-0 w-6 z-40"
+          onMouseEnter={() => setIsHoveringRightButton(true)}
+          onMouseLeave={() => setIsHoveringRightButton(false)}
+        />
+
+        {/* 右侧添加按钮 - 放在节点外部，保持高z-index */}
+        <div ref={rightButtonRef} className="absolute right-0 top-0 bottom-0 z-50 pointer-events-auto" style={{ width: '0' }}>
+          <AddNodeButton
+            position="right"
+            onClick={handleAddNode}
+            style={{
+              opacity: isHoveringRightButton ? 1 : 0,
+              pointerEvents: isHoveringRightButton ? 'auto' : 'none'
+            }}
+          />
+        </div>
+      </motion.div>
+
+
+      
       <AnimatePresence>
         {toasts.map((toast) => (
           <div
@@ -1212,6 +1409,9 @@ const StoryNode = ({ data, selected }) => {
       </AnimatePresence>
     </>
   );
+
+  // 返回节点和Toast，Toast放在外部
+  return renderNode();
 };
 
 export default memo(StoryNode); 

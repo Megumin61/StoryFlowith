@@ -1557,18 +1557,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             <Background variant="dots" gap={20} size={1} />
             <MiniMap nodeStrokeColor="#D3D3D3" nodeColor="#ffffff" nodeBorderRadius={10} />
             
-            {/* 调试面板 */}
-            <Panel position="top-left" className="bg-white p-2 rounded shadow-md text-xs">
-              <div className="font-bold mb-1">调试信息:</div>
-              <div>节点数量: {nodes.length}</div>
-              <div className="mt-1">当前风格: <span className="text-blue-600 font-bold">{selectedStyle}</span></div>
-              <div className="mt-1 text-xs text-blue-600 max-w-[220px] truncate">{apiStatus}</div>
-              {lastError && (
-                <div className="mt-1 text-xs text-red-600 max-w-[220px] truncate">
-                  错误: {lastError.message}
-                </div>
-              )}
-            </Panel>
+
           </ReactFlow>
         )}
 

@@ -68,7 +68,7 @@ const testOfficialExample = async () => {
     console.log('开始测试官方示例...');
     
     // 完全按照官方文档示例构建请求
-    const result = await fal.subscribe("fal-ai/flux-pro/kontext", {
+    const result = await fal.subscribe("fal-ai/flux-pro/kontext/max", {
       input: {
         prompt: "Put a donut next to the flour.",
         image_url: EXAMPLE_IMAGE_URL
@@ -214,86 +214,52 @@ const generateTextToImage = async (prompt) => {
 
 /**
  * 图生图API - 基于参考图和提示词生成新图像
- * @param {string} prompt - 文本提示
- * @param {string[]|File[]|Blob[]} images - 参考图片URL数组或图像文件数组
- * @param {boolean} useExampleImage - 是否使用官方示例图像
- * @param {string} style - 风格名称，用于获取风格图片URL
+ * @param {string} prompt - 文本提示词
+ * @param {string|Array<string>} imageUrl - 参考图片URL(可以是HTTP或Data URL格式)
+ * @returns {Object} - 返回结果，包含生成的图像和实际使用的参考图URL
  */
-const generateImageToImage = async (prompt, images = [], useExampleImage = false, style = 'style1') => {
+const generateImageToImage = async (prompt, imageUrl) => {
   try {
     const startTime = new Date();
-    let imageUrl;
     
-    // 添加详细日志记录参数
+    // 日志记录
     debugLog('图生图函数收到的参数:', {
       prompt,
-      images,
-      useExampleImage,
-      style
-    });
-    console.log('[图生图] 函数收到参数:', {
-      prompt: prompt,
-      images: images,
-      useExampleImage: useExampleImage,
-      style: style
+      imageUrl: typeof imageUrl === 'string' ? (imageUrl.substring(0, 30) + '...') : '数组'
     });
     
-    // 确定使用哪个图像URL
-    if (useExampleImage) {
-      // 使用官方示例图像
-      imageUrl = EXAMPLE_IMAGE_URL;
-      console.log('[图生图] 使用官方示例图像:', imageUrl);
-    } else if (images && images.length > 0) {
-      const firstImage = images[0];
-      console.log('[图生图] 检测到提供的图像:', firstImage);
-      
-      // 判断传入的是File/Blob对象还是URL字符串
-      if (firstImage instanceof File || firstImage instanceof Blob) {
-        // 如果是文件对象，直接上传到fal.ai
-        debugLog('检测到图像文件对象，直接上传到fal.ai');
-        console.log('[图生图] 检测到图像文件对象，直接上传到fal.ai');
-        imageUrl = await uploadImageToFal(firstImage);
-      } else if (typeof firstImage === 'string' && firstImage.trim() !== '') {
-        // 直接使用URL字符串，不再尝试转换为Blob，添加非空字符串检查
-        debugLog('使用提供的URL字符串');
-        console.log('[图生图] 使用提供的URL字符串:', firstImage);
-        imageUrl = firstImage;
-      } else {
-        // 添加额外日志记录无效图像类型的情况
-        console.error('[图生图] 无效的图像类型或空URL:', typeof firstImage, firstImage);
-        imageUrl = getStyleImageUrl(style);
-        console.log('[图生图] 回退到风格URL:', imageUrl);
-      }
-    } else {
-      // 如果没有提供图像，使用风格URL
-      debugLog('未提供图像，使用风格URL');
-      console.log('[图生图] 未提供图像，使用风格URL');
-      imageUrl = getStyleImageUrl(style);
-      console.log('[图生图] 使用风格URL:', imageUrl);
+    // 确保imageUrl是字符串
+    let finalImageUrl = Array.isArray(imageUrl) && imageUrl.length > 0 ? imageUrl[0] : imageUrl;
+    
+    if (!finalImageUrl) {
+      throw new Error('[图生图] 未提供有效的图像URL');
     }
+
+    console.log('[图生图] 使用图像类型:', typeof finalImageUrl);
     
-    if (!imageUrl) {
-      throw new Error('需要至少一张参考图片');
-    }
+    // 记录原始图像URL，用于返回给调用者
+    const originalImageUrl = finalImageUrl;
+
     
-    debugLog(`开始图生图调用, 提示词: ${prompt}, 参考图片URL: ${imageUrl}, 开始时间: ${startTime.toLocaleTimeString()}`);
-    console.log(`开始图生图调用, 提示词: ${prompt}, 参考图片URL: ${imageUrl}, 开始时间: ${startTime.toLocaleTimeString()}`);
-    
-    // 构建请求参数
+    // 构建请求参数 - 保持API调用的简单性
     const input = {
       prompt: prompt,
-      image_url: imageUrl,
-      aspect_ratio: "16:9", // 添加宽高比参数，设置为16:9
-      sync_mode: true // 启用同步模式，直接返回结果
+      image_url: finalImageUrl,
+      aspect_ratio: "16:9",
+      sync_mode: true
     };
     
     // 打印请求参数
-    debugLog('图生图请求参数:', JSON.stringify(input, null, 2));
-    console.log('图生图请求参数:', JSON.stringify(input, null, 2));
+    debugLog('图生图请求参数:', JSON.stringify({
+      ...input,
+      image_url: input.image_url.substring(0, 30) + '...'
+    }));
+    
+    console.log('[图生图] 开始API调用');
+    console.log('[图生图] 实际使用的参考图URL:', finalImageUrl);
     
     // 尝试使用subscribe方法调用API
     try {
-      console.log('使用subscribe方法调用API...');
       const result = await fal.subscribe("fal-ai/flux-pro/kontext", {
         input: input,
         logs: true,
@@ -306,47 +272,34 @@ const generateImageToImage = async (prompt, images = [], useExampleImage = false
       
       const endTime = new Date();
       const timeTaken = (endTime - startTime) / 1000;
-      debugLog(`图生图响应 (subscribe方法):`, result);
-      console.log(`图生图完整响应 (subscribe方法, 耗时: ${timeTaken}秒):`, result);
+      debugLog(`图生图响应完成, 耗时: ${timeTaken}秒`);
       
-      // 处理返回结果，确保返回正确的图像URL
+      // 处理返回结果
       if (result && result.data && result.data.images && result.data.images.length > 0 && result.data.images[0].url) {
         const resultImageUrl = result.data.images[0].url;
-        
-        // 预加载图像，减少后续显示延迟
-        console.log('开始预加载图像:', resultImageUrl);
-        const preloadSuccess = await preloadImage(resultImageUrl);
-        console.log('图像预加载' + (preloadSuccess ? '成功' : '失败'));
-        
-        // 直接返回包含图像URL的对象
         return {
           data: {
-            images: [resultImageUrl]
-          }
+            images: [{ url: resultImageUrl }]
+          },
+          referenceImageUrl: finalImageUrl, // 添加实际使用的参考图URL
+          originalImageUrl: originalImageUrl // 添加原始传入的图像URL
         };
       } else {
-        console.error('API返回结果格式不正确 (subscribe方法):', result);
         throw new Error('API返回结果中没有图像URL');
       }
     } catch (subscribeError) {
       console.error('subscribe方法调用失败，尝试使用queue方法:', subscribeError);
       
       // 如果subscribe方法失败，尝试使用queue方法
-      const queueStartTime = new Date();
-      console.log(`使用queue方法, 时间: ${queueStartTime.toLocaleTimeString()}`);
-      
       const { request_id } = await fal.queue.submit("fal-ai/flux-pro/kontext", {
         input: input
       });
       
-      debugLog('图生图请求已提交，请求ID:', request_id);
-      console.log('图生图请求已提交，请求ID:', request_id);
-      
-      // 立即开始轮询获取结果
+      // 轮询获取结果
       let result = null;
       let attempts = 0;
-      const maxAttempts = 120; // 增加最大尝试次数
-      const pollInterval = 500; // 轮询间隔设置为0.5秒
+      const maxAttempts = 120;
+      const pollInterval = 500;
       let lastStatus = "";
       
       while (attempts < maxAttempts) {
@@ -358,15 +311,12 @@ const generateImageToImage = async (prompt, images = [], useExampleImage = false
           logs: true
         });
         
-        // 只有状态变化时才打印日志，减少日志干扰
         if (status.status !== lastStatus) {
           debugLog(`图生图状态检查 (${attempts}/${maxAttempts}):`, status.status);
-          console.log(`图生图状态检查 (${attempts}/${maxAttempts}):`, status.status);
           lastStatus = status.status;
         }
         
         if (status.status === "COMPLETED") {
-          // 获取结果
           result = await fal.queue.result("fal-ai/flux-pro/kontext", {
             requestId: request_id
           });
@@ -375,7 +325,6 @@ const generateImageToImage = async (prompt, images = [], useExampleImage = false
           throw new Error(`API请求失败: ${status.error || "未知错误"}`);
         }
         
-        // 等待指定时间再次检查
         await new Promise(resolve => setTimeout(resolve, pollInterval));
       }
       
@@ -385,37 +334,25 @@ const generateImageToImage = async (prompt, images = [], useExampleImage = false
       
       const endTime = new Date();
       const timeTaken = (endTime - startTime) / 1000;
-      const queueTimeTaken = (endTime - queueStartTime) / 1000;
-      debugLog(`图生图响应:`, result);
-      console.log(`图生图完整响应 (总耗时: ${timeTaken}秒, queue耗时: ${queueTimeTaken}秒):`, result);
+      debugLog(`图生图响应完成 (queue), 耗时: ${timeTaken}秒`);
       
-      // 处理返回结果，确保返回正确的图像URL
+      // 处理返回结果
       if (result && result.data && result.data.images && result.data.images.length > 0 && result.data.images[0].url) {
         const resultImageUrl = result.data.images[0].url;
-        
-        // 预加载图像，减少后续显示延迟
-        console.log('开始预加载图像:', resultImageUrl);
-        const preloadSuccess = await preloadImage(resultImageUrl);
-        console.log('图像预加载' + (preloadSuccess ? '成功' : '失败'));
-        
-        // 直接返回包含图像URL的对象
         return {
           data: {
-            images: [resultImageUrl]
-          }
+            images: [{ url: resultImageUrl }]
+          },
+          referenceImageUrl: finalImageUrl, // 添加实际使用的参考图URL
+          originalImageUrl: originalImageUrl // 添加原始传入的图像URL
         };
       } else {
-        console.error('API返回结果格式不正确:', result);
         throw new Error('API返回结果中没有图像URL');
       }
     }
   } catch (error) {
-    debugLog(`图生图调用出错: ${error.message}`, error);
+    debugLog(`图生图调用出错: ${error.message}`);
     console.error('图生图调用出错:', error);
-    // 打印完整的错误信息
-    if (error.response) {
-      console.error('错误响应:', JSON.stringify(error.response, null, 2));
-    }
     throw error;
   }
 };
