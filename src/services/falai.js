@@ -216,17 +216,13 @@ const generateTextToImage = async (prompt) => {
  * 图生图API - 基于参考图和提示词生成新图像
  * @param {string} prompt - 文本提示词
  * @param {string|Array<string>} imageUrl - 参考图片URL(可以是HTTP或Data URL格式)
+ * @param {string} model - 使用的模型名称，"fal-ai/flux-pro/kontext"或"fal-ai/flux-pro/kontext/max"
  * @returns {Object} - 返回结果，包含生成的图像和实际使用的参考图URL
  */
-const generateImageToImage = async (prompt, imageUrl) => {
+const generateImageToImage = async (prompt, imageUrl, model = "fal-ai/flux-pro/kontext") => {
   try {
     const startTime = new Date();
     
-    // 日志记录
-    debugLog('图生图函数收到的参数:', {
-      prompt,
-      imageUrl: typeof imageUrl === 'string' ? (imageUrl.substring(0, 30) + '...') : '数组'
-    });
     
     // 确保imageUrl是字符串
     let finalImageUrl = Array.isArray(imageUrl) && imageUrl.length > 0 ? imageUrl[0] : imageUrl;
@@ -236,6 +232,7 @@ const generateImageToImage = async (prompt, imageUrl) => {
     }
 
     console.log('[图生图] 使用图像类型:', typeof finalImageUrl);
+    console.log(`[图生图] 使用模型: ${model}`);
     
     // 记录原始图像URL，用于返回给调用者
     const originalImageUrl = finalImageUrl;
@@ -260,7 +257,7 @@ const generateImageToImage = async (prompt, imageUrl) => {
     
     // 尝试使用subscribe方法调用API
     try {
-      const result = await fal.subscribe("fal-ai/flux-pro/kontext", {
+      const result = await fal.subscribe(model, {
         input: input,
         logs: true,
         onQueueUpdate: (update) => {
@@ -282,7 +279,8 @@ const generateImageToImage = async (prompt, imageUrl) => {
             images: [{ url: resultImageUrl }]
           },
           referenceImageUrl: finalImageUrl, // 添加实际使用的参考图URL
-          originalImageUrl: originalImageUrl // 添加原始传入的图像URL
+          originalImageUrl: originalImageUrl, // 添加原始传入的图像URL
+          model: model // 添加使用的模型名称
         };
       } else {
         throw new Error('API返回结果中没有图像URL');
@@ -291,7 +289,7 @@ const generateImageToImage = async (prompt, imageUrl) => {
       console.error('subscribe方法调用失败，尝试使用queue方法:', subscribeError);
       
       // 如果subscribe方法失败，尝试使用queue方法
-      const { request_id } = await fal.queue.submit("fal-ai/flux-pro/kontext", {
+      const { request_id } = await fal.queue.submit(model, {
         input: input
       });
       
@@ -306,7 +304,7 @@ const generateImageToImage = async (prompt, imageUrl) => {
         attempts++;
         
         // 获取请求状态
-        const status = await fal.queue.status("fal-ai/flux-pro/kontext", {
+        const status = await fal.queue.status(model, {
           requestId: request_id,
           logs: true
         });
@@ -317,7 +315,7 @@ const generateImageToImage = async (prompt, imageUrl) => {
         }
         
         if (status.status === "COMPLETED") {
-          result = await fal.queue.result("fal-ai/flux-pro/kontext", {
+          result = await fal.queue.result(model, {
             requestId: request_id
           });
           break;
@@ -344,7 +342,8 @@ const generateImageToImage = async (prompt, imageUrl) => {
             images: [{ url: resultImageUrl }]
           },
           referenceImageUrl: finalImageUrl, // 添加实际使用的参考图URL
-          originalImageUrl: originalImageUrl // 添加原始传入的图像URL
+          originalImageUrl: originalImageUrl, // 添加原始传入的图像URL
+          model: model // 添加使用的模型名称
         };
       } else {
         throw new Error('API返回结果中没有图像URL');
