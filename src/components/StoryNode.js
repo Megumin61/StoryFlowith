@@ -1,6 +1,6 @@
 import React, { memo, useState, useEffect, useRef, useCallback } from 'react';
 // 删除Handle和Position导入
-import { Image as ImageIcon, RefreshCw, Edit2, X, ChevronDown, ChevronUp, Loader2, Plus } from 'lucide-react';
+import { Image as ImageIcon, RefreshCw, Edit2, X, ChevronDown, ChevronUp, Loader2, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 // 导入测试图像
 import testImage from '../images/test.png';
@@ -77,6 +77,28 @@ const AddNodeButton = ({ position, onClick, style }) => {
     </div>
   );
 };
+
+// 在节点上方添加左右移动按钮组件
+const MoveNodeButtons = ({ onMoveLeft, onMoveRight }) => (
+  <div className="absolute -top-10 left-1/2 -translate-x-1/2 flex gap-2 z-50 transition-opacity opacity-40 hover:opacity-100">
+    <button
+      className="w-7 h-7 rounded-full bg-white/90 shadow-sm flex items-center justify-center hover:bg-blue-100 border border-gray-200"
+      onClick={onMoveLeft}
+      title="向左移动"
+      style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+    >
+      <ChevronLeft size={16} className="text-gray-500" />
+    </button>
+    <button
+      className="w-7 h-7 rounded-full bg-white/90 shadow-sm flex items-center justify-center hover:bg-blue-100 border border-gray-200"
+      onClick={onMoveRight}
+      title="向右移动"
+      style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+    >
+      <ChevronRight size={16} className="text-gray-500" />
+    </button>
+  </div>
+);
 
 // 节点状态类型
 const NODE_STATES = {
@@ -1342,8 +1364,13 @@ const StoryNode = ({ data, selected }) => {
         data-node-index={data.nodeIndex || 0}
         data-node-width={nodeState === NODE_STATES.COLLAPSED ? NODE_WIDTH.COLLAPSED : NODE_WIDTH.EXPANDED}
       >
-
-        
+        {/* 展开状态时显示左右移动按钮 */}
+        {(nodeState !== NODE_STATES.COLLAPSED) && data.onMoveNode && (
+          <MoveNodeButtons
+            onMoveLeft={e => { e.stopPropagation(); data.onMoveNode(data.id, 'left'); }}
+            onMoveRight={e => { e.stopPropagation(); data.onMoveNode(data.id, 'right'); }}
+          />
+        )}
         {/* 节点内容 - 不包含在z-index容器中 */}
         {renderNodeContent()}
 

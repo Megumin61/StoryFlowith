@@ -152,11 +152,109 @@ function StoryboardFlow({ initialStoryText, onClose }) {
   const [referenceImageUrl, setReferenceImageUrl] = useState(styleUrls.style1); // 风格参考图URL
   const [apiStatus, setApiStatus] = useState('初始化中...'); // API状态信息
   const [lastError, setLastError] = useState(null); // 最后一次错误
-  const [nodesDraggable, setNodesDraggable] = useState(false); // 控制节点是否可拖动，修改为默认禁用
+  const [nodesDraggable, setNodesDraggable] = useState(true); // 修改为默认启用节点拖动
   const [paneMoveable, setPaneMoveable] = useState(true); // 控制画布是否可移动
   const reactFlowInstance = useReactFlow();
   const nodeStatesRef = useRef({}); // 用于跟踪节点状态
   const skipViewUpdateRef = useRef(false); // 用于跳过视图更新
+
+  // 重新排列节点的函数 - 修改为保持节点顺序，只调整位置
+  const rearrangeNodes = useCallback((currentNodes) => {
+    if (!currentNodes || currentNodes.length === 0) {
+      return [];
+    }
+    
+    // 不再对节点进行排序，保持传入的顺序
+    const nodesToArrange = [...currentNodes];
+
+    // 使用固定间隔布局，保证卡片之间的间隙一致
+    let currentX = INITIAL_X_POSITION;
+
+    // 应用计算出的位置
+    const updatedNodes = nodesToArrange.map((node, idx) => {
+      // 获取节点状态，判断是否展开
+      const nodeState = nodeStatesRef.current[node.id] || {
+        state: 'default',
+        isExpanded: false
+      };
+      const isExpanded = nodeState.isExpanded || 
+                       nodeState.state === 'editing' || 
+                       nodeState.state === 'imageEditing' ||
+                       nodeState.state === 'generating';
+      
+      // 当前节点的宽度
+      const nodeWidth = isExpanded ? NODE_WIDTH.EXPANDED : NODE_WIDTH.COLLAPSED;
+      
+      // 保持原有的Y坐标或使用初始值
+      const yPosition = (node.position && node.position.y) || INITIAL_Y_POSITION;
+      
+      // 保存当前节点的X坐标
+      const xPosition = currentX;
+      
+      // 更新下一个节点的X坐标，固定间隔为CARD_GAP
+      currentX = xPosition + nodeWidth + CARD_GAP;
+      
+      return {
+        ...node,
+        position: {
+          x: xPosition,
+          y: yPosition
+        },
+        data: {
+          ...node.data,
+          label: `分镜 ${idx + 1}`,
+          nodeIndex: idx,
+          styleName: node.data.styleName || selectedStyle
+        },
+        // 添加布局调试信息
+        layoutInfo: {
+          isExpanded: isExpanded,
+          width: nodeWidth,
+          xPosition: xPosition,
+          gap: CARD_GAP
+        }
+      };
+    });
+    
+    return updatedNodes;
+  }, [selectedStyle]);
+
+  // 在StoryboardFlow组件内部添加handleMoveNode - 移到这里，确保在所有引用它的地方之前定义
+  const handleMoveNode = useCallback((nodeId, direction) => {
+    console.log(`移动节点 ${nodeId} 向 ${direction} 方向`);
+    
+    setNodes(nds => {
+      const idx = nds.findIndex(n => n.id === nodeId);
+      if (idx === -1) {
+        console.log(`未找到节点 ${nodeId}`);
+        return nds;
+      }
+      
+      let newIdx = direction === 'left' ? idx - 1 : idx + 1;
+      if (newIdx < 0 || newIdx >= nds.length) {
+        console.log(`无法移动节点，已经在${direction === 'left' ? '最左' : '最右'}边界`);
+        return nds; // 边界保护
+      }
+      
+      console.log(`交换节点 ${idx} 和 ${newIdx}`);
+      const newNodes = [...nds];
+      // 交换节点
+      [newNodes[idx], newNodes[newIdx]] = [newNodes[newIdx], newNodes[idx]];
+      
+      // 重新排列所有节点
+      const rearranged = rearrangeNodes(newNodes);
+      console.log('节点已重新排列');
+      
+      // 强制重新渲染，确保位置更新
+      setTimeout(() => {
+        if (reactFlowInstance) {
+          reactFlowInstance.fitView({ padding: 0.2 });
+        }
+      }, 50);
+      
+      return rearranged;
+    });
+  }, [rearrangeNodes, reactFlowInstance]);
 
   // API调试函数
   const testApiConnection = async () => {
@@ -295,9 +393,9 @@ function StoryboardFlow({ initialStoryText, onClose }) {
   }, []);
 
   const handleTextBlur = useCallback(() => {
-    console.log("文本框失去焦点，仅启用画布移动");
-    // 不再启用节点拖动功能
-    setPaneMoveable(true); // 只启用画布移动
+    console.log("文本框失去焦点，启用节点拖动和画布移动");
+    setNodesDraggable(true); // 重新启用节点拖动
+    setPaneMoveable(true); // 启用画布移动
   }, []);
 
   // 初始化时获取风格参考图的公网URL
@@ -331,71 +429,6 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     setApiStatus(`风格已更新为: ${selectedStyle}, 参考图URL: ${newReferenceUrl}`);
   }, [selectedStyle]);
 
-  // 重新排列节点的函数 - 完全重写以解决不同状态节点间距问题
-  const rearrangeNodes = useCallback((currentNodes) => {
-    if (!currentNodes || currentNodes.length === 0) {
-      return [];
-    }
-    
-    // 先按照节点的原始顺序排序
-    const sortedNodes = [...currentNodes].sort((a, b) => {
-      const aIndex = parseInt(a.data.label.replace('分镜 ', ''));
-      const bIndex = parseInt(b.data.label.replace('分镜 ', ''));
-      return aIndex - bIndex;
-    });
-
-    // 使用固定间隔布局，保证卡片之间的间隙一致
-    let currentX = INITIAL_X_POSITION;
-
-    // 应用计算出的位置
-    const updatedNodes = sortedNodes.map((node, idx) => {
-      // 获取节点状态，判断是否展开
-      const nodeState = nodeStatesRef.current[node.id] || {
-        state: 'default',
-        isExpanded: false
-      };
-      const isExpanded = nodeState.isExpanded || 
-                       nodeState.state === 'editing' || 
-                       nodeState.state === 'imageEditing' ||
-                       nodeState.state === 'generating';
-      
-      // 当前节点的宽度
-      const nodeWidth = isExpanded ? NODE_WIDTH.EXPANDED : NODE_WIDTH.COLLAPSED;
-      
-      // 保持原有的Y坐标或使用初始值
-      const yPosition = (node.position && node.position.y) || INITIAL_Y_POSITION;
-      
-      // 保存当前节点的X坐标
-      const xPosition = currentX;
-      
-      // 更新下一个节点的X坐标，固定间隔为CARD_GAP
-      currentX = xPosition + nodeWidth + CARD_GAP;
-      
-      return {
-        ...node,
-        position: {
-          x: xPosition,
-          y: yPosition
-        },
-        data: {
-          ...node.data,
-          label: `分镜 ${idx + 1}`,
-          nodeIndex: idx,
-          styleName: node.data.styleName || selectedStyle
-        },
-        // 添加布局调试信息
-        layoutInfo: {
-          isExpanded: isExpanded,
-          width: nodeWidth,
-          xPosition: xPosition,
-          gap: CARD_GAP
-        }
-      };
-    });
-    
-    return updatedNodes;
-  }, [selectedStyle]);
-
   // 监听节点状态变化并重新排列
   const handleNodeStateChange = useCallback((nodeId, state, isExpanded) => {
     // 记录当前节点的精确位置
@@ -422,11 +455,30 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     });
   }, [rearrangeNodes, nodes]);
 
-  // 处理节点拖动结束事件 - 由于禁用了节点拖动，此函数将不再被调用
+  // 处理节点拖动结束事件 - 修改为拖动后重新排序节点
   const handleNodeDragStop = useCallback((event, node) => {
-    console.log("节点拖动已禁用");
-    // 不执行任何拖动后的位置更新
-  }, []);
+    console.log("节点拖动结束:", node.id);
+    
+    // 获取所有节点并按X坐标排序
+    setNodes(nds => {
+      // 按X坐标排序节点
+      const sortedByPosition = [...nds].sort((a, b) => {
+        return a.position.x - b.position.x;
+      });
+      
+      console.log("节点已按X坐标排序");
+      
+      // 重新排列节点位置
+      return rearrangeNodes(sortedByPosition);
+    });
+    
+    // 拖动结束后适当调整视图
+    setTimeout(() => {
+      if (reactFlowInstance) {
+        reactFlowInstance.fitView({ padding: 0.2 });
+      }
+    }, 100);
+  }, [rearrangeNodes, reactFlowInstance]);
 
   // 将handleAddNode从useRef中移出，作为独立的useCallback函数
   const handleAddNode = useCallback((nodeId, position) => {
@@ -476,7 +528,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         onAddNode: handleAddNode,
         onTextFocus: handleTextFocus,
         onTextBlur: handleTextBlur,
-        referenceImageUrl: referenceImageUrl // 添加风格参考图URL
+        referenceImageUrl: referenceImageUrl, // 添加风格参考图URL
+        onMoveNode: handleMoveNode,
       });
       
       // 创建新节点 - 初始位置不重要，会在rearrangeNodes中重新计算
@@ -517,7 +570,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         reactFlowInstance.fitView({ padding: 0.2 });
           }
     }, 100);
-  }, [rearrangeNodes, handleNodeStateChange, selectedStyle, referenceImageUrl, reactFlowInstance]);
+  }, [rearrangeNodes, handleNodeStateChange, selectedStyle, referenceImageUrl, reactFlowInstance, handleMoveNode]);
 
   const handleAddFrame = () => {
     // 移除日志输出
@@ -545,7 +598,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         onAddNode: handleAddNode,
         onTextFocus: handleTextFocus,
         onTextBlur: handleTextBlur,
-        referenceImageUrl: referenceImageUrl // 添加风格参考图URL
+        referenceImageUrl: referenceImageUrl, // 添加风格参考图URL
+        onMoveNode: handleMoveNode,
       });
       
       // 创建新节点 - 初始位置不重要，会在rearrangeNodes中重新计算
@@ -1459,7 +1513,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         onAddNode: handleAddNode,
         onTextFocus: handleTextFocus,
         onTextBlur: handleTextBlur,
-        referenceImageUrl: referenceImageUrl // 添加风格参考图URL
+        referenceImageUrl: referenceImageUrl, // 添加风格参考图URL
+        onMoveNode: handleMoveNode,
       });
       
       // 创建初始节点
@@ -1483,7 +1538,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     }
       }, 300);
     }
-  }, [initialStoryText, loading, setNodes, setEdges, getStorySegments, handleNodeStateChange, handleAddNode, selectedStyle, referenceImageUrl, reactFlowInstance]);
+  }, [initialStoryText, loading, setNodes, setEdges, getStorySegments, handleNodeStateChange, handleAddNode, selectedStyle, referenceImageUrl, reactFlowInstance, handleMoveNode]);
 
   return (
     <motion.div
@@ -1542,7 +1597,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             panOnScroll={false}
             nodesDraggable={nodesDraggable}
             paneMoveable={paneMoveable}
-            nodeDraggable={event => !event?.target?.closest('[data-no-drag]')}
+            nodeDragThreshold={1} // 添加拖动阈值，更容易触发拖动
+            nodeDraggable={event => !event?.target?.closest('[data-no-drag]')} // 确保只有在非编辑区域才能拖动
             elementsSelectable={true}
             snapToGrid={false}
             preventScrolling={true}
