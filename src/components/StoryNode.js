@@ -1,6 +1,6 @@
-import React, { memo, useState, useEffect, useRef, useCallback } from 'react';
+import React, { memo, useState, useEffect, useRef } from 'react';
 // 删除Handle和Position导入
-import { Image as ImageIcon, RefreshCw, Edit2, X, ChevronDown, ChevronUp, Loader2, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Image as ImageIcon, RefreshCw, Edit2, X, ChevronDown, ChevronUp, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 // 导入测试图像
 import testImage from '../images/test.png';
@@ -44,39 +44,7 @@ const nodeAnimations = {
   hover: { y: -4 },
 };
 
-// 添加新节点按钮组件
-const AddNodeButton = ({ position, onClick, style }) => {
-  // 使用useCallback确保函数引用稳定
-  const handleButtonClick = useCallback((e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    console.log(`点击了${position}侧添加分镜按钮`);
-
-    // 确保onClick是一个函数
-    if (typeof onClick === 'function') {
-      onClick(position);
-    } else {
-      console.error("onClick函数未定义");
-    }
-  }, [onClick, position]);
-
-  return (
-    <div
-      className="absolute top-1/2 transform -translate-y-1/2 hover:scale-105 transition-transform duration-100 z-50"
-      style={{
-        [position === 'left' ? 'left' : 'right']: '-25px', // 将按钮移到节点外部
-        ...style
-      }}
-      onClick={handleButtonClick}
-    >
-      <div className="w-[35px] h-[34px] rounded-[11px] bg-[#A4ABD0]/16 flex items-center justify-center cursor-pointer">
-        <div className="w-[23px] h-[22px] rounded-[6px] bg-[#848FA7]/50 flex items-center justify-center">
-          <Plus size={14} className="text-white" />
-        </div>
-      </div>
-    </div>
-  );
-};
+// 删除添加节点按钮组件 - 不再需要
 
 // 在节点上方添加左右移动按钮组件
 const MoveNodeButtons = ({ onMoveLeft, onMoveRight }) => (
@@ -124,9 +92,6 @@ const StoryNode = ({ data, selected }) => {
   const [regeneratePrompt, setRegeneratePrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [toasts, setToasts] = useState([]);
-  const [isHoveringLeftButton, setIsHoveringLeftButton] = useState(false);
-  const [isHoveringRightButton, setIsHoveringRightButton] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   
   // 移除调试面板状态
   // const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -138,10 +103,6 @@ const StoryNode = ({ data, selected }) => {
   const promptTextAreaRef = useRef(null);
   const toastPositionRef = useRef({ x: 0, y: 0 });
   const nodeRef = useRef(null);
-  const leftSideRef = useRef(null);
-  const rightSideRef = useRef(null);
-  const leftButtonRef = useRef(null);
-  const rightButtonRef = useRef(null);
   const prevNodeStateRef = useRef(nodeState);
 
   // 动画控制
@@ -276,54 +237,7 @@ const StoryNode = ({ data, selected }) => {
     }
   }, [nodeState, data]);
 
-  // 添加鼠标事件处理
-  useEffect(() => {
-    const handleMouseEnterLeftButton = () => {
-      setIsHoveringLeftButton(true);
-    };
-
-    const handleMouseLeaveLeftButton = (e) => {
-      // 检查鼠标是否移动到感应区域
-      if (!leftSideRef.current?.contains(e.relatedTarget)) {
-        setIsHoveringLeftButton(false);
-      }
-    };
-
-    const handleMouseEnterRightButton = () => {
-      setIsHoveringRightButton(true);
-    };
-
-    const handleMouseLeaveRightButton = (e) => {
-      // 检查鼠标是否移动到感应区域
-      if (!rightSideRef.current?.contains(e.relatedTarget)) {
-        setIsHoveringRightButton(false);
-      }
-    };
-
-    // 为按钮添加事件监听
-    if (leftButtonRef.current) {
-      leftButtonRef.current.addEventListener('mouseenter', handleMouseEnterLeftButton);
-      leftButtonRef.current.addEventListener('mouseleave', handleMouseLeaveLeftButton);
-    }
-
-    if (rightButtonRef.current) {
-      rightButtonRef.current.addEventListener('mouseenter', handleMouseEnterRightButton);
-      rightButtonRef.current.addEventListener('mouseleave', handleMouseLeaveRightButton);
-    }
-
-    return () => {
-      // 清理事件监听
-      if (leftButtonRef.current) {
-        leftButtonRef.current.removeEventListener('mouseenter', handleMouseEnterLeftButton);
-        leftButtonRef.current.removeEventListener('mouseleave', handleMouseLeaveLeftButton);
-      }
-
-      if (rightButtonRef.current) {
-        rightButtonRef.current.removeEventListener('mouseenter', handleMouseEnterRightButton);
-        rightButtonRef.current.removeEventListener('mouseleave', handleMouseLeaveRightButton);
-      }
-    };
-  }, []);
+  // 删除鼠标事件处理 - 不再需要
 
   const addToast = (message, type = 'success') => {
     // 确保nodeRef已设置并且有getBoundingClientRect方法
@@ -357,7 +271,16 @@ const StoryNode = ({ data, selected }) => {
       handleTextSave();
       handlePromptSave();
     }
-    setNodeState(newState);
+    
+    if (nodeState !== newState) {
+      setNodeState(newState);
+      console.log(`节点状态从 ${nodeState} 变为 ${newState}`);
+      
+      // 通知父组件状态变化
+      if (data.onNodeStateChange) {
+        data.onNodeStateChange(newState);
+      }
+    }
   };
 
   // 修改文本变化处理函数，减少DOM操作频率
@@ -425,7 +348,10 @@ const StoryNode = ({ data, selected }) => {
 
   const handleTextSave = () => {
     if (nodeText !== data.text) {
-      data.onUpdateNode?.(data.id, { text: nodeText });
+      // 调用父组件的保存函数
+      if (data.onTextSave) {
+        data.onTextSave(nodeText);
+      }
       addToast('情节描述已保存', 'success');
     }
   };
@@ -433,7 +359,10 @@ const StoryNode = ({ data, selected }) => {
   // 添加视觉描述保存函数
   const handlePromptSave = () => {
     if (visualPrompt !== data.imagePrompt) {
-      data.onUpdateNode?.(data.id, { imagePrompt: visualPrompt });
+      // 调用父组件的保存函数
+      if (data.onPromptSave) {
+        data.onPromptSave(visualPrompt);
+      }
     }
   };
 
@@ -902,19 +831,7 @@ const StoryNode = ({ data, selected }) => {
     }
   };
 
-  // 添加分镜函数
-  const handleAddNode = useCallback((position) => {
-    console.log(`添加分镜 ${position} 到节点 ${data.id}`);
-
-    // 使用setTimeout确保事件处理完成后再调用onAddNode
-    setTimeout(() => {
-      if (typeof data.onAddNode === 'function') {
-        data.onAddNode(data.id, position);
-      } else {
-        console.error("onAddNode 函数未定义", data);
-      }
-    }, 0);
-  }, [data]);
+  // 删除添加分镜函数 - 不再需要
 
   // 渲染折叠状态
   const renderCollapsedCard = () => (
@@ -1363,6 +1280,7 @@ const StoryNode = ({ data, selected }) => {
         data-node-id={data.id}
         data-node-index={data.nodeIndex || 0}
         data-node-width={nodeState === NODE_STATES.COLLAPSED ? NODE_WIDTH.COLLAPSED : NODE_WIDTH.EXPANDED}
+        data-node-height={nodeState === NODE_STATES.COLLAPSED ? 100 : 250}
       >
         {/* 展开状态时显示左右移动按钮 */}
         {(nodeState !== NODE_STATES.COLLAPSED) && data.onMoveNode && (
@@ -1390,46 +1308,6 @@ const StoryNode = ({ data, selected }) => {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-
-        {/* 左侧感应区域 - 确保高z-index */}
-        <div
-          ref={leftSideRef}
-          className="absolute left-0 top-0 bottom-0 w-6 z-40"
-          onMouseEnter={() => setIsHoveringLeftButton(true)}
-          onMouseLeave={() => setIsHoveringLeftButton(false)}
-        />
-
-        {/* 左侧添加按钮 - 放在节点外部，保持高z-index */}
-        <div ref={leftButtonRef} className="absolute left-0 top-0 bottom-0 z-50 pointer-events-auto" style={{ width: '0' }}>
-          <AddNodeButton
-            position="left"
-            onClick={handleAddNode}
-            style={{
-              opacity: isHoveringLeftButton ? 1 : 0,
-              pointerEvents: isHoveringLeftButton ? 'auto' : 'none'
-            }}
-          />
-        </div>
-
-        {/* 右侧感应区域 - 确保高z-index */}
-        <div
-          ref={rightSideRef}
-          className="absolute right-0 top-0 bottom-0 w-6 z-40"
-          onMouseEnter={() => setIsHoveringRightButton(true)}
-          onMouseLeave={() => setIsHoveringRightButton(false)}
-        />
-
-        {/* 右侧添加按钮 - 放在节点外部，保持高z-index */}
-        <div ref={rightButtonRef} className="absolute right-0 top-0 bottom-0 z-50 pointer-events-auto" style={{ width: '0' }}>
-          <AddNodeButton
-            position="right"
-            onClick={handleAddNode}
-            style={{
-              opacity: isHoveringRightButton ? 1 : 0,
-              pointerEvents: isHoveringRightButton ? 'auto' : 'none'
-            }}
-          />
         </div>
       </motion.div>
 
