@@ -37,7 +37,72 @@ function AppContent() {
   const [showJourneyMap, setShowJourneyMap] = useState(false);
   const [showStoryScript, setShowStoryScript] = useState(false);
   const [showUserPersonas, setShowUserPersonas] = useState(false);
-  const [userPersonas, setUserPersonas] = useState([]);
+  const [userPersonas, setUserPersonas] = useState([
+    {
+      "persona_name": "张敏",
+      "persona_summary": "在时间与资源限制中挣扎的效率型家长",
+      "memorable_quote": "当手机电量比我的耐心先耗尽时，任何精致菜谱都成了讽刺漫画。",
+      "Appearance characteristics": "略微驼背的职业女性，左手无名指有戒痕，右手拇指有长期滑动屏幕形成的小茧，穿着容易打理但起球的针织外套。",
+      "basic_profile": {
+        "name": "张敏",
+        "age": "35岁",
+        "gender": "女",
+        "occupation": "银行客户经理",
+        "education": "金融学本科",
+        "city": "成都",
+        "technology_literacy": "中等",
+        "devices": ["华为Mate 40", "小米手环"]
+      },
+      "domain_pain_points": [
+        "菜谱推荐算法忽视实际库存和时间压力",
+        "操作流程未考虑移动场景下的电量焦虑",
+        "健康饮食理想与现实执行力的落差",
+        "决策疲劳导致的工具信任危机"
+      ],
+      "domain_goals_and_motivations": [
+        "在超市现场快速匹配库存的烹饪方案",
+        "建立可预测的时间-营养性价比评估系统",
+        "降低健康饮食的认知与操作门槛",
+        "获得对不完美选择的宽容感"
+      ],
+      "usage_context": [
+        "通勤后的超市采购时段（18:30-19:30）",
+        "单手持手机同时推购物车的分心状态",
+        "常面临手机低电量警告",
+        "潜意识计算明日早餐准备时间"
+      ],
+      "tool_expectations": [
+        "基于实时定位的货架对应推荐",
+        "电量敏感型极简交互模式",
+        "允许瑕疵的勉强及格食谱分类",
+        "跨平台购物清单同步功能"
+      ],
+      "general_behavior": [
+        "会为节省2分钟额外支付10元钱",
+        "对进度条和倒计时产生条件反射焦虑",
+        "在工具失效时立即启动备选方案",
+        "周期性产生自我优化冲动"
+      ],
+      "psychological_profile": [
+        "将饮食管理视为家庭责任延伸",
+        "对效率流失存在放大镜效应",
+        "用工具选择缓解育儿愧疚感",
+        "形成临时妥协-理想反弹的循环模式"
+      ],
+      "communication_style": [
+        "常用'至少''起码'等底线思维词汇",
+        "倾向量化表达（'15分钟''3种食材'）",
+        "抱怨时夹杂自嘲式幽默",
+        "对营销话术异常敏感"
+      ],
+      "keywords": [
+        "决策疲劳型用户",
+        "场景敏感度需求",
+        "底线思维者",
+        "工具信任危机"
+      ]
+    }
+  ]);
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
   const [userInput, setUserInput] = useState(''); // 新：保存用户最原的输
 
@@ -232,10 +297,17 @@ function AppContent() {
 
         <AnimatePresence>
           {showStoryboardTest && (
-            <StoryboardTest
-              initialStoryText=""
-              onClose={handleCloseStoryboardTest}
-            />
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-50"
+            >
+              <StoryboardTest
+                initialStoryText=""
+                onClose={handleCloseStoryboardTest}
+              />
+            </motion.div>
           )}
         </AnimatePresence>
 
@@ -317,10 +389,27 @@ function AppContent() {
 
         <AnimatePresence>
           {showUserPersonas && (
-            <UserPersonas 
-              show={showUserPersonas}
-              onClose={() => setShowUserPersonas(false)}
-            />
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-2xl max-w-7xl w-full max-h-[90vh] overflow-hidden">
+                <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                  <h2 className="text-2xl font-bold text-gray-900">用户画像管理</h2>
+                  <button
+                    onClick={() => setShowUserPersonas(false)}
+                    className="p-2 rounded-full hover:bg-gray-200 text-gray-500"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+                <div className="p-6">
+                  <UserPersonas 
+                    personas={userPersonas}
+                    selectedPersona={null}
+                    onSelectPersona={() => {}}
+                    onUpdatePersonas={setUserPersonas}
+                  />
+                </div>
+              </div>
+            </div>
           )}
         </AnimatePresence>
       </main>

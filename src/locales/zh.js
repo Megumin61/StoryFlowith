@@ -142,8 +142,8 @@ const zh = {
     userRoleBinding: '用户角色绑定'
   },
   refinement: {
-    title: '细化故事与角色',
-    description: '第二步：根据 AI 生成的初步框架，完善您的故事脚本并构建核心用户画像。',
+    title: '访谈记录分析与用户画像生成',
+    description: '从访谈记录中提取关键信息，生成详细的用户画像。',
     storyTitle: '故事脚本',
     personaTitle: '核心用户画像',
     addPersona: '添加新画像',
@@ -153,6 +153,21 @@ const zh = {
     personaDescription: '用户特征与目标（一句话描述）',
     personaDescriptionPlaceholder: '例如：一位希望提升工作效率的年轻设计师',
     button: '完成细化，进入故事画布',
+    interviewTitle: '访谈记录分析',
+    interviewDescription: '从访谈记录中圈选关键信息，提取用户特征、场景和痛点',
+    keywordExtraction: '关键词提取',
+    keywordTypes: {
+      user_traits: '用户特征',
+      scenarios: '使用场景',
+      pain_points: '痛点问题',
+      emotions: '情绪状态',
+      goals: '目标动机'
+    },
+    generatePersona: '生成用户画像',
+    personaGenerated: '用户画像已生成',
+    viewDetails: '查看详情',
+    backToEdit: '返回编辑',
+    continueNext: '继续下一步',
     generated: {
       title: '基于您的想法，AI生成了以下故事框架：',
       section1: '## 核心场景',

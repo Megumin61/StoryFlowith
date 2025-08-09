@@ -50,7 +50,7 @@ function IdeaModal({ onGenerate, onTestStoryboard, onTestFalai }) {
             onClick={handleGenerate}
             disabled={isLoading}
           >
-            <span className="btn-text" style={{ display: isLoading ? 'none' : 'inline' }}>{locale.idea.button}</span>
+            <span className="btn-text" style={{ display: isLoading ? 'none' : 'inline' }}>快速生成画布</span>
             <div className={`loader ${isLoading ? '' : 'hidden'}`}></div>
           </button>
             
@@ -60,7 +60,7 @@ function IdeaModal({ onGenerate, onTestStoryboard, onTestFalai }) {
               onClick={handleTestStoryboard}
               disabled={isLoading}
             >
-              <span className="btn-text" style={{ display: isLoading ? 'none' : 'inline' }}>测试分镜</span>
+              <span className="btn-text" style={{ display: isLoading ? 'none' : 'inline' }}>完整创作流程</span>
               <div className={`loader ${isLoading ? '' : 'hidden'}`}></div>
             </button>
             
