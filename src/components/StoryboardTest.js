@@ -208,8 +208,6 @@ function StoryboardPreparationPage({ initialStoryText, onComplete }) {
 
 // 左侧边栏组件 - 参考StoryTree设计
 function StoryboardTree({ storyData, selectedFrameId, onFrameSelect }) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
-
   const renderStoryTree = () => {
     const nodesById = new Map(storyData.map(node => [node.id, node]));
     const childrenOf = new Map();
@@ -253,9 +251,9 @@ function StoryboardTree({ storyData, selectedFrameId, onFrameSelect }) {
     
     return (
       <ul className="space-y-1">
-        <li className="px-2 py-1 flex items-center gap-2 text-sm font-semibold text-gray-700">
-          <Folder className="w-4 h-4 text-gray-500" />
-          <span>主要故事线</span>
+        <li className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+          <Folder className="w-4 h-4 text-gray-500 flex-shrink-0" />
+          <span className="truncate">主要故事线</span>
         </li>
         {mainPath.map((node, index) => {
           const hasBranches = node.connections && node.connections.length > 1;
@@ -263,16 +261,16 @@ function StoryboardTree({ storyData, selectedFrameId, onFrameSelect }) {
           return (
             <li key={node.id} className={`story-tree-node ${hasBranches ? 'has-branches' : ''} is-main`}>
               <div 
-                className={`node-content w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer ${node.id === selectedFrameId ? 'bg-blue-100 border-blue-500' : ''}`}
+                className={`node-content w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer transition-colors ${node.id === selectedFrameId ? 'bg-blue-100 border border-blue-500' : ''}`}
                 onClick={() => onFrameSelect(node.id)}
               >
                 <Film className="w-4 h-4 flex-shrink-0 text-gray-500" />
-                <span className="flex-grow text-sm text-gray-800 truncate">{node.label || `分镜 ${index + 1}`}</span>
-                <span className="flex-shrink-0">📽️</span>
+                <span className="flex-grow text-sm text-gray-800 truncate min-w-0">{node.label || `分镜 ${index + 1}`}</span>
+                <span className="flex-shrink-0 text-xs">📽️</span>
               </div>
               
               {hasBranches && (
-                <ul className="branch-container pl-4">
+                <ul className="branch-container pl-4 mt-1">
                   {node.connections.slice(1).map((branchId, idx) => {
                     branchCounter++;
                     const branchName = `分支 ${String.fromCharCode(64 + branchCounter)}`;
@@ -297,29 +295,7 @@ function StoryboardTree({ storyData, selectedFrameId, onFrameSelect }) {
     );
   };
 
-  const toggleCollapse = () => {
-    setIsCollapsed(!isCollapsed);
-  };
-
-  return (
-    <aside className={`bg-white/95 backdrop-blur-sm border-r border-gray-200 flex-shrink-0 flex flex-col transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-72'}`}>
-      <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-200 h-16">
-        {!isCollapsed && <h2 className="font-bold text-lg text-gray-800">故事结构</h2>}
-        <button 
-          className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-colors"
-          onClick={toggleCollapse}
-          title={isCollapsed ? "展开侧边栏" : "折叠侧边栏"}
-        >
-          {isCollapsed ? <PanelLeft className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
-        </button>
-      </div>
-      {!isCollapsed && (
-        <div className="flex-grow overflow-y-auto p-2">
-          {renderStoryTree()}
-        </div>
-      )}
-    </aside>
-  );
+  return renderStoryTree();
 }
 
 // 分支节点组件
@@ -338,16 +314,16 @@ function BranchNode({ branchId, branchName, nodesById, selectedFrameId, onFrameS
     return (
       <li key={node.id} className="story-tree-node is-branch">
         <div 
-          className={`node-content w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer ${node.id === selectedFrameId ? 'bg-blue-100 border-blue-500' : ''}`}
+          className={`node-content w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer transition-colors ${node.id === selectedFrameId ? 'bg-blue-100 border border-blue-500' : ''}`}
           onClick={() => onFrameSelect(node.id)}
         >
           <Film className="w-4 h-4 flex-shrink-0 text-gray-500" />
-          <span className="flex-grow text-sm text-gray-800 truncate">{node.label || '分镜'}</span>
-          <span className="flex-shrink-0">📽️</span>
+          <span className="flex-grow text-sm text-gray-800 truncate min-w-0">{node.label || '分镜'}</span>
+          <span className="flex-shrink-0 text-xs">📽️</span>
         </div>
         
         {node.connections && node.connections.length > 0 && (
-          <ul className="pl-4">
+          <ul className="pl-4 mt-1">
             {node.connections.map(childId => renderBranchNodes(childId))}
           </ul>
         )}
@@ -358,12 +334,12 @@ function BranchNode({ branchId, branchName, nodesById, selectedFrameId, onFrameS
   return (
     <li>
       <div 
-        className="branch-header flex items-center gap-2 p-2 cursor-pointer text-sm font-medium text-yellow-700 bg-yellow-50/80 rounded-md my-1"
+        className="branch-header flex items-center gap-2 p-2 cursor-pointer text-sm font-medium text-yellow-700 bg-yellow-50/80 rounded-md my-1 transition-colors hover:bg-yellow-100/80"
         onClick={toggleExpand}
       >
         <CornerDownRight className="w-4 h-4 flex-shrink-0" />
-        <span className="flex-grow">{branchName}</span>
-        <ChevronDown className={`w-4 h-4 expand-icon transition-transform ${!isExpanded ? 'rotate-180' : ''}`} />
+        <span className="flex-grow truncate min-w-0">{branchName}</span>
+        <ChevronDown className={`w-4 h-4 expand-icon transition-transform flex-shrink-0 ${!isExpanded ? 'rotate-180' : ''}`} />
       </div>
       
       <ul className={`branch-content pl-4 border-l-2 border-yellow-200 ${isExpanded ? '' : 'hidden'}`}>
@@ -387,6 +363,49 @@ function StoryboardCanvas({ storyData, selectedFrameId, onFrameSelect, onMoveNod
     const cleanup = initCanvasControls();
     return cleanup;
   }, [storyData, selectedFrameId]);
+
+  // 聚焦到第一个分镜节点
+  useEffect(() => {
+    if (storyData.length > 0) {
+      // 确保有选中的分镜
+      if (!selectedFrameId) {
+        onFrameSelect(storyData[0].id);
+      }
+      
+      // 聚焦到第一个节点位置 - 延迟更长时间确保reflowNodesEvenly执行完毕
+      setTimeout(() => {
+        const firstNode = storyData[0];
+        if (firstNode && canvasWorldRef.current && canvasContainerRef.current) {
+          const container = canvasContainerRef.current;
+          const world = canvasWorldRef.current;
+          
+          // 获取容器的实际尺寸
+          const containerRect = container.getBoundingClientRect();
+          const containerCenterX = containerRect.width / 2;
+          const containerCenterY = containerRect.height / 2;
+          
+          // 计算节点中心位置（考虑当前的世界变换）
+          const nodeCenterX = firstNode.pos.x + 180; // 假设节点宽度为360
+          const nodeCenterY = firstNode.pos.y + 100; // 假设节点高度为200
+          
+          // 计算需要移动的距离，使节点居中
+          const moveX = containerCenterX - nodeCenterX;
+          const moveY = containerCenterY - nodeCenterY;
+          
+          // 应用变换，使用平滑动画
+          world.style.transition = 'transform 0.5s ease-out';
+          world.style.transform = `translate(${moveX}px, ${moveY}px)`;
+          worldPosRef.current = { x: moveX, y: moveY };
+          lastWorldPosRef.current = { x: moveX, y: moveY };
+          
+          // 移除过渡动画
+          setTimeout(() => {
+            world.style.transition = '';
+          }, 500);
+        }
+      }, 300); // 增加延迟时间，确保reflowNodesEvenly执行完毕
+    }
+  }, [storyData, selectedFrameId, onFrameSelect]);
 
   // 监听节点状态变化，重新渲染连接线
   useEffect(() => {
@@ -594,14 +613,45 @@ function PersonaStoryPage({
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedStoryId, setSelectedStoryId] = useState(null);
   const [storyInput, setStoryInput] = useState('');
+  const [isPersonaModalOpen, setIsPersonaModalOpen] = useState(false);
+  
+  // 三个故事脚本区域的状态
+  const [storyAreas, setStoryAreas] = useState({
+    area1: { keywords: [] },
+    area2: { keywords: [] },
+    area3: { keywords: [] }
+  });
 
-  // 关键词类型配置 - 优雅灰色系配色
+  // 关键词筛选状态
+  const [activeKeywordFilter, setActiveKeywordFilter] = useState('all');
+
+  // 关键词类型配置 - 更新为新的5个维度
   const keywordTypes = [
-    { id: 'user_traits', name: '🎭 用户特征', color: 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100', icon: '🎭' },
-    { id: 'scenarios', name: '🏠 使用场景', color: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100', icon: '🏠' },
-    { id: 'pain_points', name: '😰 痛点问题', color: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100', icon: '😰' },
-    { id: 'emotions', name: '💭 情绪状态', color: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100', icon: '💭' },
-    { id: 'goals', name: '🎯 目标动机', color: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100', icon: '🎯' }
+    { 
+      id: 'elements', 
+      name: '元素', 
+      color: 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100' 
+    },
+    { 
+      id: 'user_traits', 
+      name: '用户特征', 
+      color: 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100' 
+    },
+    { 
+      id: 'pain_points', 
+      name: '痛点', 
+      color: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' 
+    },
+    { 
+      id: 'goals', 
+      name: '目标', 
+      color: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' 
+    },
+    { 
+      id: 'emotions', 
+      name: '情绪', 
+      color: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' 
+    }
   ];
 
   // 初始化默认用户画像
@@ -621,30 +671,45 @@ function PersonaStoryPage({
       };
       setPersonas([defaultPersona]);
       setSelectedPersona(defaultPersona);
-    } else {
+    } else if (personas.length > 0 && !selectedPersona) {
       setSelectedPersona(personas[0]);
     }
-  }, [personas, setPersonas]);
+  }, [personas, setPersonas, selectedPersona]);
 
   // 处理拖拽关键词到故事构思区
   const handleDragStart = (e, keyword) => {
     e.dataTransfer.setData('keyword', JSON.stringify(keyword));
   };
 
-  const handleDrop = (e) => {
+  const handleDrop = (e, areaId) => {
     e.preventDefault();
     const keywordData = e.dataTransfer.getData('keyword');
     if (keywordData) {
       const keyword = JSON.parse(keywordData);
-      // 只添加到组合列表中，不修改文本框内容
-      if (!storyComposition.find(item => item.id === keyword.id)) {
-        setStoryComposition(prev => [...prev, keyword]);
-      }
+      // 添加到指定区域
+      setStoryAreas(prev => ({
+        ...prev,
+        [areaId]: {
+          ...prev[areaId],
+          keywords: [...prev[areaId].keywords, keyword]
+        }
+      }));
     }
   };
 
   const handleDragOver = (e) => {
     e.preventDefault();
+  };
+
+  // 移除故事区域中的关键词
+  const removeFromStoryArea = (areaId, keywordId) => {
+    setStoryAreas(prev => ({
+      ...prev,
+      [areaId]: {
+        ...prev[areaId],
+        keywords: prev[areaId].keywords.filter(item => item.id !== keywordId)
+      }
+    }));
   };
 
   // 移除故事构思中的关键词
@@ -654,68 +719,82 @@ function PersonaStoryPage({
 
   // 生成故事脚本
   const generateStories = async () => {
-    if (storyComposition.length === 0) return;
+    const totalKeywords = Object.values(storyAreas).reduce((sum, area) => sum + area.keywords.length, 0);
+    if (totalKeywords === 0) return;
     
     setIsGenerating(true);
     
     // 模拟生成多个故事脚本
     setTimeout(() => {
-      const stories = [
-        {
-          id: 'story-1',
-          title: '超市购物的效率困境',
-          content: `故事背景：
-张敏下班后匆忙赶到超市，手机电量已经不足20%。她需要在30分钟内完成采购并回家准备晚餐。
-
-主要情节：
-1. 张敏单手推着购物车，另一手拿着手机搜索菜谱
-2. 应用推荐的菜谱需要她没有的调料，让她感到焦虑
-3. 手机电量警告弹出，她开始慌张地寻找充电宝
-4. 最终选择了最简单的方案：买现成的半成品
-
-故事结局：
-虽然解决了当天的问题，但张敏意识到需要一个更智能的购物助手。`,
-          tags: ['效率', '焦虑', '妥协'],
-          score: 85
-        },
-        {
-          id: 'story-2',
-          title: '时间与品质的平衡',
-          content: `故事背景：
-周末的张敏想要为家人准备一顿丰盛的晚餐，但仍然受到时间限制的困扰。
-
-主要情节：
-1. 张敏在家中规划菜单，考虑家人的喜好和营养需求
-2. 她使用量化思维："15分钟准备，30分钟烹饪"
-3. 在超市中，她发现计划与现实的差距
-4. 通过灵活调整，最终找到了平衡点
-
-故事结局：
-张敏学会了在效率和品质之间找到平衡，家人也很满意这顿饭。`,
-          tags: ['平衡', '规划', '满足'],
-          score: 92
-        },
-        {
-          id: 'story-3',
-          title: '技术焦虑与人性化需求',
-          content: `故事背景：
-张敏尝试使用新的烹饪应用，但发现技术并不总是能理解人的真实需求。
-
-主要情节：
-1. 应用的复杂界面让她感到困惑
-2. 推荐算法忽视了她的实际情况
-3. 她开始怀疑技术是否真的能帮助她
-4. 最终她找到了更适合自己的使用方式
-
-故事结局：
-张敏意识到技术需要更人性化，同时她也学会了更好地表达自己的需求。`,
-          tags: ['技术', '人性化', '适应'],
-          score: 78
+      const stories = [];
+      
+      // 为每个有关键词的区域生成故事
+      Object.entries(storyAreas).forEach(([areaId, area]) => {
+        if (area.keywords.length > 0) {
+          const storyId = `story-${areaId}`;
+          const storyTitle = area.name;
+          const storyContent = generateStoryContent(area);
+          
+          stories.push({
+            id: storyId,
+            title: storyTitle,
+            content: storyContent,
+            tags: area.keywords.map(k => k.text),
+            score: 85 + Math.floor(Math.random() * 15),
+            areaId: areaId
+          });
         }
-      ];
+      });
+      
       setGeneratedStories(stories);
       setIsGenerating(false);
     }, 2000);
+  };
+
+  // 根据区域关键词生成故事内容
+  const generateStoryContent = (area) => {
+    const keywords = area.keywords.map(k => k.text).join('、');
+    
+    if (area.name === '效率导向故事') {
+      return `故事背景：
+基于关键词：${keywords}
+张敏是一位注重效率的用户，她希望在有限的时间内完成更多的事情。
+
+主要情节：
+1. 张敏面临时间紧张的情况，需要快速做出决策
+2. 她使用量化思维来评估每个选项的效率和成本
+3. 在追求效率的过程中，她发现了一些意外的收获
+4. 最终她找到了平衡效率和质量的解决方案
+
+故事结局：
+张敏学会了如何在效率和质量之间找到平衡，提高了整体的生活品质。`;
+    } else if (area.name === '情感共鸣故事') {
+      return `故事背景：
+基于关键词：${keywords}
+张敏在使用产品时遇到了情感上的挑战和共鸣。
+
+主要情节：
+1. 张敏在使用过程中产生了强烈的情感体验
+2. 她开始反思自己的需求和期望
+3. 通过与产品的互动，她发现了新的可能性
+4. 最终她找到了情感上的满足和认同
+
+故事结局：
+张敏不仅解决了实际问题，更重要的是获得了情感上的满足和成长。`;
+    } else {
+      return `故事背景：
+基于关键词：${keywords}
+张敏遇到了一个具体的问题，需要找到有效的解决方案。
+
+主要情节：
+1. 张敏识别出了问题的核心和影响
+2. 她尝试了多种方法来解决这个问题
+3. 在解决问题的过程中，她发现了新的机会
+4. 最终她找到了最适合的解决方案
+
+故事结局：
+张敏不仅解决了当前的问题，还为未来类似的情况积累了经验。`;
+        }
   };
 
   // 选择故事脚本
@@ -753,122 +832,192 @@ function PersonaStoryPage({
         className="absolute top-4 right-4 z-10 p-2 bg-white rounded-full shadow-md hover:shadow-lg transition-shadow"
       >
         <ArrowLeft className="w-5 h-5 text-gray-600" />
-      </button>
-      {/* 左侧 - 用户画像卡片 */}
-      <div className="w-72 flex flex-col">
-        {selectedPersona && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden h-full">
-            {/* 卡片头部 */}
-            <div className="bg-gradient-to-r from-gray-800 to-gray-900 p-6 text-white relative">
-              <button
-                onClick={editPersona}
-                className="absolute top-4 right-4 p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
-              >
-                <Edit2 className="w-4 h-4" />
               </button>
               
-              {/* 人物头像 */}
-              <div className="flex items-center space-x-4">
-                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
-                  <div className="w-12 h-12 bg-white/30 rounded-full flex items-center justify-center text-2xl">
-                    👤
-                  </div>
+      {/* 左侧面板：精简用户画像 + 气泡池 */}
+      <div className="w-80 flex flex-col space-y-4">
+        {/* 精简用户画像 */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-800 flex items-center">
+              <User className="mr-2 text-blue-500" />
+              用户画像
+            </h3>
+            <button
+              onClick={() => setIsPersonaModalOpen(true)}
+              className="p-1 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+            >
+              <Edit2 className="w-4 h-4" />
+            </button>
+          </div>
+
+          {selectedPersona ? (
+            <div className="p-3 space-y-2">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                  <span className="text-sm">👤</span>
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold">{selectedPersona.persona_name}</h3>
-                  <p className="text-white/80 text-sm">{selectedPersona.persona_details.age} • {selectedPersona.persona_details.occupation}</p>
+                  <h4 className="font-semibold text-gray-800 text-sm">{selectedPersona.persona_name}</h4>
+                  <p className="text-xs text-gray-600">{selectedPersona.persona_details.age} • {selectedPersona.persona_details.occupation}</p>
                 </div>
+              </div>
+              
+              <p className="text-xs text-gray-700">{selectedPersona.persona_summary}</p>
+              
+              {/* 关键信息标签 */}
+              <div className="space-y-1">
+                {selectedPersona.persona_details.pain_points && selectedPersona.persona_details.pain_points.length > 0 && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">主要痛点</div>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedPersona.persona_details.pain_points.slice(0, 2).map((point, idx) => (
+                        <span key={idx} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">
+                          {point}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              
+                {selectedPersona.persona_details.goals && selectedPersona.persona_details.goals.length > 0 && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">主要目标</div>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedPersona.persona_details.goals.slice(0, 2).map((goal, idx) => (
+                        <span key={idx} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                          {goal}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-            
-            {/* 卡片内容 - 更专注于个人信息 */}
-            <div className="p-6 space-y-6 flex-1 overflow-y-auto">
-              {/* 基本信息 */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                  基本信息
-                </h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">年龄</span>
-                    <span className="font-medium">{selectedPersona.persona_details.age}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">职业</span>
-                    <span className="font-medium">{selectedPersona.persona_details.occupation}</span>
-                  </div>
-                  <div className="text-sm">
-                    <span className="text-gray-600">生活方式</span>
-                    <p className="text-gray-800 mt-1">{selectedPersona.persona_details.lifestyle}</p>
-                  </div>
-                </div>
-              </div>
+          ) : (
+            <div className="p-3 text-center text-gray-500">
+              <User className="w-6 h-6 mx-auto mb-1 text-gray-300" />
+              <p className="text-xs">暂无用户画像</p>
+            </div>
+          )}
+        </div>
 
-              {/* 个人特征 */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center">
-                  <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
-                  行为特征
-                </h4>
-                <div className="space-y-2">
-                  {selectedPersona.persona_details.behaviors.map((behavior, idx) => (
-                    <div key={idx} className="text-xs bg-purple-50 text-purple-700 px-3 py-2 rounded-lg border border-purple-100">
-                      {behavior}
-                    </div>
-                  ))}
-                </div>
+        {/* 关键词气泡池 - 固定高度 */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col flex-1 min-h-0">
+          <div className="p-3 border-b border-gray-100">
+            <h2 className="text-sm font-semibold text-gray-800 flex items-center">
+              <div className="w-5 h-5 bg-gray-100 rounded-lg flex items-center justify-center mr-2 text-xs">
+                🏷️
               </div>
-              
-              {/* 痛点问题 */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center">
-                  <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
-                  主要痛点
-                </h4>
-                <div className="space-y-2">
-                  {selectedPersona.persona_details.pain_points.map((point, idx) => (
-                    <div key={idx} className="text-xs bg-red-50 text-red-700 px-3 py-2 rounded-lg border border-red-100">
-                      {point}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              {/* 目标动机 */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center">
-                  <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  目标动机
-                </h4>
-                <div className="space-y-2">
-                  {selectedPersona.persona_details.goals.map((goal, idx) => (
-                    <div key={idx} className="text-xs bg-green-50 text-green-700 px-3 py-2 rounded-lg border border-green-100">
-                      {goal}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              关键词气泡池
+            </h2>
+          </div>
+          
+          {/* 筛选按钮 */}
+          <div className="p-3 border-b border-gray-100">
+            <div className="flex flex-wrap gap-1">
+              <button
+                onClick={() => setActiveKeywordFilter('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                  activeKeywordFilter === 'all' 
+                    ? 'bg-gray-900 text-white shadow-sm' 
+                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                }`}
+              >
+                全部 ({selectedKeywords.length})
+              </button>
+              {keywordTypes.map(type => {
+                const count = selectedKeywords.filter(k => k.type === type.id).length;
+                if (count === 0) return null;
+                return (
+                  <button
+                    key={type.id}
+                    onClick={() => setActiveKeywordFilter(type.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                      activeKeywordFilter === type.id 
+                        ? 'bg-gray-900 text-white shadow-sm' 
+                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                    }`}
+                  >
+                    {type.name} ({count})
+                  </button>
+                );
+              })}
             </div>
           </div>
-        )}
+          
+          <div className="flex-1 overflow-y-auto p-3">
+            <div className="space-y-3">
+              {keywordTypes.map(type => {
+                const typeKeywords = selectedKeywords.filter(k => k.type === type.id);
+                if (typeKeywords.length === 0) return null;
+                if (activeKeywordFilter !== 'all' && activeKeywordFilter !== type.id) return null;
+
+                return (
+                  <div key={type.id}>
+                    <h3 className="text-xs font-medium text-gray-700 mb-2 flex items-center">
+                      <span className={`w-2 h-2 rounded-full mr-2 ${type.color.includes('blue') ? 'bg-blue-400' : 
+                        type.color.includes('green') ? 'bg-green-400' :
+                        type.color.includes('red') ? 'bg-red-400' :
+                        type.color.includes('yellow') ? 'bg-yellow-400' : 'bg-purple-400'}`}></span>
+                      {type.name}
+                    </h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      {typeKeywords.map(keyword => (
+                        <div
+                          key={keyword.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, keyword)}
+                          className={`${type.color} px-3 py-1.5 rounded-lg text-xs font-medium cursor-move hover:shadow-sm transition-all duration-200 border max-w-full`}
+                        >
+                          <span className="break-words">{keyword.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* 中间 - 故事构思区和故事脚本预览 */}
+      {/* 右侧面板：故事输入 + 三个故事区域 */}
       <div className="flex-1 flex flex-col space-y-6 min-h-0">
-        {/* 故事构思区卡片 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-shrink-0">
+        {/* 故事输入区域 */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div className="p-4 border-b border-gray-100">
+            <h2 className="text-base font-semibold text-gray-800 flex items-center">
+              <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center mr-2 text-sm">
+                ✍️
+              </div>
+              故事构思输入
+            </h2>
+          </div>
+          
+          <div className="p-4">
+            <textarea
+              value={storyInput}
+              onChange={(e) => setStoryInput(e.target.value)}
+              placeholder="在这里输入您的初始故事想法..."
+              className="w-full h-24 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm leading-relaxed resize-none"
+            />
+          </div>
+        </div>
+
+        {/* 三个故事脚本区域 */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-h-0 flex flex-col">
           <div className="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-base font-semibold text-gray-800 flex items-center">
-              <div className="w-6 h-6 bg-gray-100 rounded-lg flex items-center justify-center mr-2 text-sm">
-                ✨
+              <div className="w-6 h-6 bg-green-100 rounded-lg flex items-center justify-center mr-2 text-sm">
+                📚
               </div>
-              故事构思区
+              故事脚本生成
             </h2>
             <button
               onClick={generateStories}
-              disabled={storyComposition.length === 0 || isGenerating}
-              className="bg-gray-900 text-white px-6 py-2 rounded-lg hover:bg-gray-800 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center"
+              disabled={Object.values(storyAreas).every(area => area.keywords.length === 0) || isGenerating}
+              className="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center text-sm"
             >
               {isGenerating ? (
                 <>
@@ -884,24 +1033,34 @@ function PersonaStoryPage({
             </button>
           </div>
           
-          <div className="p-4">            
-            {/* 已选择的关键词显示 - 移到文本框上方 */}
-            {storyComposition.length > 0 && (
-              <div className="mb-2">
-                <div className="flex items-center mb-1">
-                  <span className="text-sm font-medium text-gray-700">重点关注</span>
-                  <div className="flex-1 h-px bg-gray-200 ml-3"></div>
-                </div>
-                <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
-                  {storyComposition.map(keyword => (
+          <div className="p-4 flex-1 overflow-y-auto">
+            <div className="grid grid-cols-3 gap-4 h-full">
+              {Object.entries(storyAreas).map(([areaId, area]) => (
+                <div
+                  key={areaId}
+                  className="border-2 border-dashed border-gray-300 rounded-xl p-4 bg-gray-50 hover:border-gray-400 transition-colors"
+                  onDrop={(e) => handleDrop(e, areaId)}
+                  onDragOver={handleDragOver}
+                >
+                  {/* 拖拽提示 */}
+                  {area.keywords.length === 0 && (
+                    <div className="text-center py-8 text-gray-400">
+                      <div className="w-8 h-8 mx-auto mb-2 text-gray-300">📥</div>
+                      <p className="text-xs">拖拽关键词到这里</p>
+                    </div>
+                  )}
+                  
+                  {/* 已添加的关键词 */}
+                  <div className="space-y-2">
+                    {area.keywords.map(keyword => (
                     <div
                       key={keyword.id}
-                      className="flex items-center bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs border border-gray-200 hover:bg-gray-50 transition-colors flex-shrink-0"
+                        className="inline-flex items-center justify-between bg-white p-2 rounded-lg border border-gray-200 max-w-full"
                     >
-                      <span className="mr-1">{keyword.text}</span>
+                        <span className="text-xs text-gray-700 flex-1 break-words pr-2">{keyword.text}</span>
                       <button
-                        onClick={() => removeFromComposition(keyword.id)}
-                        className="text-gray-400 hover:text-gray-600 ml-1 text-sm leading-none"
+                          onClick={() => removeFromStoryArea(areaId, keyword.id)}
+                          className="text-gray-400 hover:text-red-500 flex-shrink-0 p-0.5 rounded hover:bg-red-50 transition-colors text-xs"
                       >
                         ×
                       </button>
@@ -909,63 +1068,33 @@ function PersonaStoryPage({
                   ))}
                 </div>
               </div>
-            )}
-            
-            {/* 可输入的文本框 */}
-            <div>
-              <textarea
-                value={storyInput}
-                onChange={(e) => setStoryInput(e.target.value)}
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                placeholder="在这里输入您的故事构思，或者将右侧的关键词气泡拖拽到上方的重点关注区域..."
-                className="w-full h-20 p-3 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 hover:border-gray-400 hover:bg-gray-100/50 transition-all duration-200 resize-none focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent text-sm leading-relaxed"
-              />
+              ))}
             </div>
           </div>
         </div>
 
-        {/* 故事脚本预览区域 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-h-0 flex flex-col">
+        {/* 生成的故事脚本预览 */}
+        {generatedStories.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
           <div className="p-4 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-base font-semibold text-gray-800 flex items-center">
-              <div className="w-6 h-6 bg-green-100 rounded-lg flex items-center justify-center mr-2 text-sm">
-                📚
+                <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center mr-2 text-sm">
+                  📖
               </div>
-              故事脚本预览
+                生成的故事脚本
             </h2>
             
-            {/* 选择故事按钮 - 移到右上角 */}
             {selectedStoryId && (
               <button
                 onClick={confirmStorySelection}
-                className="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800 hover:shadow-md transition-all font-medium text-sm"
-              >
-                选择此故事并继续
-              </button>
-            )}
-            
-            {/* 未选择故事时的禁用按钮 */}
-            {!selectedStoryId && generatedStories.length > 0 && (
-              <button
-                disabled
-                className="bg-gray-200 text-gray-400 px-4 py-2 rounded-lg cursor-not-allowed font-medium text-sm"
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-all font-medium text-sm"
               >
                 选择此故事并继续
               </button>
             )}
           </div>
           
-          <div className="p-4 flex-1 overflow-y-auto">
-            {generatedStories.length === 0 ? (
-              <div className="text-center text-gray-500 mt-20">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-2xl">📖</span>
-                </div>
-                <p className="text-lg font-medium mb-2">等待故事生成</p>
-                <p className="text-sm">选择关键词并点击生成故事按钮</p>
-              </div>
-            ) : (
+            <div className="p-4">
               <div className="grid grid-cols-3 gap-4">
                 {generatedStories.map(story => (
                   <div
@@ -978,78 +1107,32 @@ function PersonaStoryPage({
                     onClick={() => selectStory(story)}
                   >
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold text-gray-900 text-base">{story.title}</h3>
+                      <h3 className="font-semibold text-gray-900 text-sm">{story.title}</h3>
                       {selectedStoryId === story.id && (
-                        <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
-                          <div className="w-2 h-2 bg-white rounded-full"></div>
+                        <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                          <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
                         </div>
                       )}
                     </div>
                     
-                    <div className="text-sm text-gray-600 line-clamp-6 leading-relaxed">
+                    <div className="text-xs text-gray-600 line-clamp-4 leading-relaxed">
                       {story.content.split('\n\n')[0]}
                     </div>
                   </div>
                 ))}
               </div>
-            )}
           </div>
         </div>
-      </div>
-
-      {/* 右侧 - 关键词气泡池 */}
-      <div className="w-80 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col">
-        <div className="p-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-800 flex items-center">
-            <div className="w-6 h-6 bg-gray-100 rounded-lg flex items-center justify-center mr-2 text-sm">
-              🏷️
-            </div>
-            关键词气泡池
-          </h2>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="space-y-4">
-            {keywordTypes.map(type => {
-              const typeKeywords = selectedKeywords.filter(k => k.type === type.id);
-              if (typeKeywords.length === 0) return null;
-
-              return (
-                <div key={type.id}>
-                  <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-                    <span className={`w-3 h-3 rounded-full mr-2 ${type.color.includes('slate') ? 'bg-slate-400' : 
-                      type.color.includes('amber') ? 'bg-amber-400' :
-                      type.color.includes('rose') ? 'bg-rose-400' :
-                      type.color.includes('indigo') ? 'bg-indigo-400' : 'bg-emerald-400'}`}></span>
-                    {type.name}
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {typeKeywords.map(keyword => (
-                      <div
-                        key={keyword.id}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, keyword)}
-                        className={`${type.color} px-3 py-2 rounded-2xl text-sm font-medium cursor-move hover:shadow-md hover:scale-105 transition-all duration-200 border-2 flex items-center space-x-2`}
-                      >
-                        <span className="text-base">{type.icon}</span>
-                        <span>{keyword.text}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* 用户画像编辑弹窗 */}
-      {isEditingPersona && selectedPersona && (
+      {isPersonaModalOpen && selectedPersona && (
         <PersonaEditModal
           persona={selectedPersona}
           personas={personas}
           onSave={savePersonaEdit}
-          onClose={() => setIsEditingPersona(false)}
+          onClose={() => setIsPersonaModalOpen(false)}
         />
       )}
     </div>
@@ -1630,9 +1713,12 @@ function StoryboardFlow({ initialStoryText, onClose }) {
 
   // 画布页额外状态
   const [isCanvasPersonaModalOpen, setIsCanvasPersonaModalOpen] = useState(false);
+  const [editingPersona, setEditingPersona] = useState(null);
   const [isInterviewModalOpen, setIsInterviewModalOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isKeywordPoolCollapsed, setIsKeywordPoolCollapsed] = useState(false);
   const [activeKeywordTypeCanvas, setActiveKeywordTypeCanvas] = useState('all');
+  const [isReferenceDropdownOpen, setIsReferenceDropdownOpen] = useState(false);
 
   // 根据当前节点实际宽度动态排布，保持等距
   const reflowNodesEvenly = useCallback(() => {
@@ -1709,18 +1795,52 @@ function StoryboardFlow({ initialStoryText, onClose }) {
   const [currentInterviewIndex, setCurrentInterviewIndex] = useState(0);
   const currentInterview = interviewDataList[currentInterviewIndex];
   
-  // 切换访谈记录时重置关键词
+  // 切换访谈记录时保持关键词，不重置
   useEffect(() => {
-    setSelectedKeywords(currentInterview.keywords || []);
+    // 不再重置关键词，保持用户已提取的关键词
   }, [currentInterviewIndex]);
 
-  // 关键词类型配置
+  // 点击外部关闭下拉菜单
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (isReferenceDropdownOpen && !event.target.closest('.reference-dropdown')) {
+        setIsReferenceDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isReferenceDropdownOpen]);
+
+  // 关键词类型配置 - 更新为新的5个维度
   const keywordTypes = [
-    { id: 'user_traits', name: '用户特征', color: 'bg-blue-100 text-blue-800 border-blue-200' },
-    { id: 'scenarios', name: '使用场景', color: 'bg-green-100 text-green-800 border-green-200' },
-    { id: 'pain_points', name: '痛点问题', color: 'bg-red-100 text-red-800 border-red-200' },
-    { id: 'emotions', name: '情绪状态', color: 'bg-purple-100 text-purple-800 border-purple-200' },
-    { id: 'goals', name: '目标动机', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' }
+    { 
+      id: 'elements', 
+      name: '元素', 
+      color: 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100' 
+    },
+    { 
+      id: 'user_traits', 
+      name: '用户特征', 
+      color: 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100' 
+    },
+    { 
+      id: 'pain_points', 
+      name: '痛点', 
+      color: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' 
+    },
+    { 
+      id: 'goals', 
+      name: '目标', 
+      color: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' 
+    },
+    { 
+      id: 'emotions', 
+      name: '情绪', 
+      color: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' 
+    }
   ];
 
   useEffect(() => {
@@ -1933,6 +2053,11 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     // 这里可以添加保存到本地存储或发送到服务器的逻辑
   };
 
+  // 处理拖拽关键词到画布
+  const handleDragStart = (e, keyword) => {
+    e.dataTransfer.setData('keyword', JSON.stringify(keyword));
+  };
+
   // 移除关键词
   const removeKeyword = (keywordId) => {
     const updatedKeywords = selectedKeywords.filter(k => k.id !== keywordId);
@@ -1962,7 +2087,16 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       }
     ];
     setPersonas(generatedPersonas);
-    setCurrentStep('persona-story');
+    
+    // 基于关键词自动补充一些气泡
+    const autoKeywords = [
+      { id: Date.now() + 1, text: '效率优先', type: 'goals', timestamp: new Date().toISOString() },
+      { id: Date.now() + 2, text: '时间管理', type: 'pain_points', timestamp: new Date().toISOString() },
+      { id: Date.now() + 3, text: '实用主义', type: 'user_traits', timestamp: new Date().toISOString() },
+      { id: Date.now() + 4, text: '深夜使用', type: 'scenarios', timestamp: new Date().toISOString() },
+      { id: Date.now() + 5, text: '焦虑情绪', type: 'emotions', timestamp: new Date().toISOString() }
+    ];
+    setSelectedKeywords(prev => [...prev, ...autoKeywords]);
   };
 
   // 处理故事选择
@@ -1972,7 +2106,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     const initialFrames = generateInitialFrames({
       storyScript: selectedStory.content,
       selectedStyle: 'style1',
-      frameCount: 5,
+      frameCount: 1,
       settings: {
         aspectRatio: '16:9',
         model: 'pro',
@@ -1982,26 +2116,48 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     });
     setStoryData(initialFrames);
     setCurrentStep('canvas');
-    // 初始进入画布后进行一次等距排布
-    setTimeout(() => reflowNodesEvenly(), 50);
+    // 自动选择第一个分镜
+    setTimeout(() => {
+      if (initialFrames.length > 0) {
+        setSelectedFrameId(initialFrames[0].id);
+      }
+    }, 100);
+  };
+
+  // 保存用户画像编辑
+  const savePersonaEdit = (updatedPersona) => {
+    setPersonas(prev => prev.map(p => 
+      p.persona_name === updatedPersona.persona_name ? updatedPersona : p
+    ));
+    setEditingPersona(null);
   };
 
   // 生成初始分镜数据
   const generateInitialFrames = (config) => {
     const frames = [];
-    const spacing = 400; // 初始间距
     
-    for (let i = 0; i < config.frameCount; i++) {
-      frames.push({
-        id: `frame-${i}`,
-        label: `分镜 ${i + 1}`,
-        text: '',
-        image: null,
-        pos: { x: 100 + i * spacing, y: 150 },
-        connections: i < config.frameCount - 1 ? [`frame-${i + 1}`] : [],
-        styleName: config.selectedStyle
-      });
-    }
+    // 计算画布中心位置（考虑左侧边栏宽度）
+    const sidebarWidth = 288; // 左侧边栏宽度 (w-72 = 288px)
+    const canvasWidth = window.innerWidth - sidebarWidth;
+    const canvasHeight = window.innerHeight;
+    
+    // 节点尺寸约为 360x200，所以居中时需要减去一半
+    const nodeWidth = 360;
+    const nodeHeight = 200;
+    const centerX = sidebarWidth + (canvasWidth / 2) - (nodeWidth / 2);
+    const centerY = (canvasHeight / 2) - (nodeHeight / 2);
+    
+    // 只生成1个初始分镜，居中显示
+    frames.push({
+      id: `frame-0`,
+      label: `分镜 1`,
+      text: '',
+      image: null,
+      pos: { x: centerX, y: centerY },
+      connections: [],
+      styleName: config.selectedStyle
+    });
+    
     return frames;
   };
 
@@ -2092,12 +2248,12 @@ function StoryboardFlow({ initialStoryText, onClose }) {
 
   // 渲染访谈记录处理页面
   const renderInterviewStep = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* 访谈记录 */}
-      <div className="lg:col-span-2 bg-white rounded-xl p-6 border border-gray-200">
+    <div className="h-[800px] flex gap-4 p-4 overflow-hidden">
+      {/* 左侧：用户访谈记录 */}
+      <div className="flex-1 bg-white rounded-xl border border-gray-200 flex flex-col min-h-0">
         {/* 访谈记录标题和翻页控制 */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+        <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-800 flex items-center">
             <User className="mr-2 text-blue-500" />
             用户访谈记录
           </h2>
@@ -2129,75 +2285,84 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         </div>
         
         {/* 当前访谈记录信息 */}
-        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+        <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
           <div className="flex items-center justify-between">
             <h3 className="font-medium text-gray-800">{currentInterview.title}</h3>
             <span className="text-sm text-gray-500">{currentInterview.date}</span>
           </div>
         </div>
         
-        <div 
-          ref={contentRef}
-          className="prose relative max-w-none p-4 bg-gray-50 rounded-lg border border-gray-200 min-h-[400px] leading-relaxed text-gray-700 select-text"
-          onMouseDown={startCustomSelection}
-          onContextMenu={(e) => e.preventDefault()}
-          style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
-        >
-          {/* 拖动高亮覆盖层 */}
-          <div className="absolute inset-0 pointer-events-none">
-            {dragHighlightRects.map((r, idx) => (
-              <div
-                key={idx}
-                className="bg-blue-300/30 rounded-sm"
-                style={{ position: 'absolute', left: r.left, top: r.top, width: r.width, height: r.height }}
-              />
+        {/* 访谈内容区域 - 可滚动 */}
+        <div className="flex-1 overflow-y-auto p-3">
+                      <div 
+              ref={contentRef}
+              className="prose relative max-w-none p-3 bg-gray-50 rounded-lg border border-gray-200 min-h-[350px] leading-relaxed text-gray-700 select-text"
+              onMouseDown={startCustomSelection}
+              onContextMenu={(e) => e.preventDefault()}
+              style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+            >
+            {/* 拖动高亮覆盖层 */}
+            <div className="absolute inset-0 pointer-events-none">
+              {dragHighlightRects.map((r, idx) => (
+                <div
+                  key={idx}
+                  className="bg-blue-300/30 rounded-sm"
+                  style={{ position: 'absolute', left: r.left, top: r.top, width: r.width, height: r.height }}
+                />
+              ))}
+            </div>
+            {currentInterview.text.split('\n').map((paragraph, index) => (
+              <p key={index} className="mb-4">
+                {paragraph}
+              </p>
             ))}
           </div>
-          {currentInterview.text.split('\n').map((paragraph, index) => (
-            <p key={index} className="mb-4">
-              {paragraph}
-            </p>
-          ))}
-        </div>
-        
-        <div className="mt-4 text-sm text-gray-600">
-          已提取 {selectedKeywords.length} 个关键词
+          
+          <div className="mt-4 text-sm text-gray-600">
+            已提取 {selectedKeywords.length} 个关键词
+          </div>
         </div>
       </div>
 
-      {/* 关键词气泡 */}
-      <div className="bg-white rounded-xl p-6 border border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">提取的关键词</h3>
-        
-        <div className="space-y-3 max-h-[500px] overflow-y-auto">
-          {keywordTypes.map(type => {
-            const typeKeywords = selectedKeywords.filter(k => k.type === type.id);
-            if (typeKeywords.length === 0) return null;
-
-    return (
-              <div key={type.id} className="space-y-2">
-                <h4 className="text-sm font-medium text-gray-700">{type.name}</h4>
-                <div className="space-y-2">
-                  {typeKeywords.map(keyword => (
-                    <div 
-                      key={keyword.id}
-                      className={`flex items-center justify-between p-2 rounded-lg border ${type.color}`}
-                    >
-                      <span className="text-sm flex-1">{keyword.text}</span>
-                      <button
-                        onClick={() => removeKeyword(keyword.id)}
-                        className="ml-2 text-gray-500 hover:text-red-500"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+      {/* 中间：关键词气泡面板 */}
+      <div className="w-80 bg-white rounded-xl border border-gray-200 flex flex-col min-h-0">
+        <div className="p-3 border-b border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-800">提取的关键词</h3>
         </div>
-        <div className="mt-4 border-t border-gray-200 pt-4">
+        
+        <div className="flex-1 overflow-y-auto p-3">
+          <div className="space-y-4">
+            {keywordTypes.map(type => {
+              const typeKeywords = selectedKeywords.filter(k => k.type === type.id);
+              if (typeKeywords.length === 0) return null;
+
+              return (
+                <div key={type.id} className="space-y-2">
+                  <h4 className="text-sm font-medium text-gray-700">{type.name}</h4>
+                  <div className="space-y-2">
+                    {typeKeywords.map(keyword => (
+                      <div 
+                        key={keyword.id}
+                        className={`inline-flex items-center justify-between p-2 rounded-lg border text-sm ${type.color} max-w-full`}
+                      >
+                        <span className="flex-1 break-words pr-2">{keyword.text}</span>
+                        <button
+                          onClick={() => removeKeyword(keyword.id)}
+                          className="text-gray-500 hover:text-red-500 flex-shrink-0 p-0.5 rounded hover:bg-red-50 transition-colors"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        
+        {/* 生成用户画像按钮 - 固定在面板底部 */}
+        <div className="p-4 border-t border-gray-100">
           <button
             onClick={generatePersonas}
             disabled={selectedKeywords.length === 0}
@@ -2207,6 +2372,173 @@ function StoryboardFlow({ initialStoryText, onClose }) {
           </button>
         </div>
       </div>
+
+      {/* 右侧：用户画像面板 */}
+      <div className="w-80 bg-white rounded-xl border border-gray-200 flex flex-col min-h-0">
+        <div className="p-3 border-b border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+            <User className="mr-2 text-blue-500" />
+            用户画像
+          </h3>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-3">
+          {personas.length > 0 ? (
+            <div className="space-y-4">
+              {personas.map((persona, index) => (
+                <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-gray-800">{persona.persona_name}</h4>
+                    <button
+                      onClick={() => setEditingPersona(persona)}
+                      className="p-1 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-3">{persona.persona_summary}</p>
+                  
+                  {/* 基本信息 */}
+                  <div className="space-y-2 mb-3">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">年龄</span>
+                      <span className="font-medium">{persona.persona_details.age}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">职业</span>
+                      <span className="font-medium">{persona.persona_details.occupation}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">生活方式</span>
+                      <span className="font-medium">{persona.persona_details.lifestyle}</span>
+                    </div>
+                  </div>
+                  
+                  {/* 显示所有维度信息 */}
+                  {persona.persona_details.pain_points && persona.persona_details.pain_points.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">痛点问题</div>
+                      <div className="space-y-1">
+                        {persona.persona_details.pain_points.map((point, idx) => (
+                          <div key={idx} className="text-xs bg-rose-50 text-rose-700 px-2 py-1 rounded border border-rose-200">
+                            {point}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {persona.persona_details.goals && persona.persona_details.goals.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">目标动机</div>
+                      <div className="space-y-1">
+                        {persona.persona_details.goals.map((goal, idx) => (
+                          <div key={idx} className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded border border-emerald-200">
+                            {goal}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {persona.persona_details.behaviors && persona.persona_details.behaviors.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">行为习惯</div>
+                      <div className="space-y-1">
+                        {persona.persona_details.behaviors.map((behavior, idx) => (
+                          <div key={idx} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200">
+                            {behavior}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {persona.persona_details.preferences && persona.persona_details.preferences.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">偏好习惯</div>
+                      <div className="space-y-1">
+                        {persona.persona_details.preferences.map((preference, idx) => (
+                          <div key={idx} className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-200">
+                            {preference}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {persona.persona_details.attitudes && persona.persona_details.attitudes.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">态度观点</div>
+                      <div className="space-y-1">
+                        {persona.persona_details.attitudes.map((attitude, idx) => (
+                          <div key={idx} className="text-xs bg-amber-50 text-amber-700 px-2 py-1 rounded border border-amber-200">
+                            {attitude}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {persona.persona_details.frustrations && persona.persona_details.frustrations.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">挫折困扰</div>
+                      <div className="space-y-1">
+                        {persona.persona_details.frustrations.map((frustration, idx) => (
+                          <div key={idx} className="text-xs bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">
+                            {frustration}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {persona.persona_details.technologies && persona.persona_details.technologies.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">技术使用</div>
+                      <div className="space-y-1">
+                        {persona.persona_details.technologies.map((tech, idx) => (
+                          <div key={idx} className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded border border-indigo-200">
+                            {tech}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <User className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p className="text-sm">点击"生成用户画像"按钮</p>
+              <p className="text-xs text-gray-400">基于提取的关键词生成用户画像</p>
+            </div>
+          )}
+        </div>
+        
+        {/* 确定按钮 - 固定在底部 */}
+        {personas.length > 0 && (
+          <div className="p-4 border-t border-gray-100">
+            <button
+              onClick={() => setCurrentStep('persona-story')}
+              className="w-full bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors"
+            >
+              确定并继续
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 用户画像编辑弹窗 */}
+      {editingPersona && (
+        <PersonaEditModal
+          persona={editingPersona}
+          personas={personas}
+          onSave={savePersonaEdit}
+          onClose={() => setEditingPersona(null)}
+        />
+      )}
     </div>
   );
 
@@ -2217,45 +2549,140 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     <div className="absolute inset-0 flex flex-col bg-white">
       {/* 顶部工具栏 */}
       <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <h1 className="text-xl font-semibold text-gray-800">分镜画布</h1>
-          <div className="flex items-center space-x-2 text-sm text-gray-600">
-            <span>风格: {selectedStyle}</span>
-            <span>•</span>
-            <span>{storyData.length} 个分镜</span>
-          </div>
-        </div>
-        
-        <div className="flex items-center space-x-2">
+        {/* 左侧：返回上一步按钮 */}
+        <div className="flex items-center">
           <button
             onClick={() => setCurrentStep('persona-story')}
-            className="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
           >
-            返回上一步
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            <span>返回上一步</span>
           </button>
+        </div>
+        
+        {/* 右侧：其他按钮 */}
+        <div className="flex items-center space-x-3">
           <button
             onClick={() => setIsCanvasPersonaModalOpen(true)}
-            className="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
           >
             查看画像
           </button>
           <button
             onClick={() => setIsInterviewModalOpen(true)}
-            className="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
           >
             查看访谈
           </button>
+
+          {/* 画面参考下拉组件 */}
+          <div className="relative reference-dropdown">
+            <button
+              onClick={() => setIsReferenceDropdownOpen(prev => !prev)}
+              className="flex items-center space-x-3 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <div className="w-8 h-8 rounded overflow-hidden border border-gray-200">
+                <img 
+                  src={styleUrls[selectedStyle] || styleUrls.style1} 
+                  alt="风格参考"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = testImage;
+                  }}
+                />
+              </div>
+              <span className="text-gray-700 font-medium">画面参考</span>
+              <ChevronDown className="w-4 h-4 text-gray-500" />
+            </button>
+            
+            {/* 下拉菜单 */}
+            {isReferenceDropdownOpen && (
+              <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                <div className="p-3 border-b border-gray-100">
+                  <h3 className="text-sm font-medium text-gray-700">选择参考风格</h3>
+                </div>
+                <div className="p-3 space-y-2">
+                  {[
+                    { id: 'style1', label: '动漫风格', image: styleUrls.style1 },
+                    { id: 'style2', label: '写实风格', image: styleUrls.style2 },
+                    { id: 'style3', label: '水彩风格', image: styleUrls.style3 },
+                    { id: 'style4', label: '插画风格', image: styleUrls.style4 }
+                  ].map(style => (
+                    <button
+                      key={style.id}
+                      onClick={() => {
+                        setSelectedStyle(style.id);
+                        setReferenceImageUrl(style.image);
+                        setIsReferenceDropdownOpen(false);
+                      }}
+                      className={`w-full flex items-center space-x-3 p-2 rounded-lg transition-colors ${
+                        selectedStyle === style.id 
+                          ? 'bg-blue-50 border border-blue-200' 
+                          : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded overflow-hidden border border-gray-200">
+                        <img 
+                          src={style.image} 
+                          alt={style.label}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = testImage;
+                          }}
+                        />
+                      </div>
+                      <span className="text-sm text-gray-700">{style.label}</span>
+                      {selectedStyle === style.id && (
+                        <CheckCircle className="w-4 h-4 text-blue-600 ml-auto" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 添加分镜按钮 */}
           <button
-            onClick={adjustNodeSpacing}
-            className="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
+            onClick={() => {
+              // 添加新分镜的逻辑
+              const newFrameId = `frame-${storyData.length}`;
+              const newFrame = {
+                id: newFrameId,
+                label: `分镜 ${storyData.length + 1}`,
+                text: '',
+                image: null,
+                pos: { x: 100 + storyData.length * 400, y: 150 },
+                connections: [],
+                styleName: selectedStyle
+              };
+              
+              setStoryData(prev => {
+                const updatedData = [...prev, newFrame];
+                
+                // 如果有前一个节点，将新节点连接到前一个节点
+                if (prev.length > 0) {
+                  const lastFrame = prev[prev.length - 1];
+                  const updatedLastFrame = {
+                    ...lastFrame,
+                    connections: [...lastFrame.connections, newFrameId]
+                  };
+                  updatedData[updatedData.length - 2] = updatedLastFrame;
+                }
+                
+                return updatedData;
+              });
+              
+              setSelectedFrameId(newFrameId);
+            }}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
           >
-            调整间距
-          </button>
-          <button
-            onClick={onClose}
-            className="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
-          >
-            关闭
+            <Plus className="w-4 h-4" />
+            <span>添加分镜</span>
           </button>
         </div>
       </div>
@@ -2266,79 +2693,138 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       <div className="flex-1 flex overflow-hidden">
         {/* 中间画布区域（全宽） */}
         <div className="flex-1 relative overflow-hidden">
-          <StoryboardCanvas 
-            storyData={storyData}
-            selectedFrameId={selectedFrameId}
-            onFrameSelect={handleFrameSelect}
-            onMoveNode={handleMoveNode}
-            onDeleteNode={handleDeleteNode}
-            onTextSave={handleTextSave}
-            onPromptSave={handlePromptSave}
-            onNodeStateChange={handleNodeStateChange}
-          />
+        <StoryboardCanvas 
+          storyData={storyData}
+          selectedFrameId={selectedFrameId}
+          onFrameSelect={handleFrameSelect}
+          onMoveNode={handleMoveNode}
+          onDeleteNode={handleDeleteNode}
+          onTextSave={handleTextSave}
+          onPromptSave={handlePromptSave}
+          onNodeStateChange={handleNodeStateChange}
+        />
 
-          {/* 悬浮侧栏：结构 + 关键词分类气泡 */}
-          <div className="absolute left-4 top-4 z-10 w-80 rounded-2xl shadow-lg bg-white/95 backdrop-blur border border-gray-200">
-            <div className="p-3 border-b border-gray-200 flex items-center justify-between">
-              <span className="font-medium text-gray-800 text-sm">故事结构</span>
-              <button
-                onClick={() => setIsSidebarCollapsed(v => !v)}
-                className="text-gray-500 hover:text-gray-700 text-xs px-2 py-1 rounded-md hover:bg-gray-100"
-              >
-                {isSidebarCollapsed ? '展开' : '收起'}
-              </button>
-            </div>
-            {!isSidebarCollapsed && (
-              <div className="max-h-64 overflow-y-auto p-2">
-                <StoryboardTree 
-                  storyData={storyData}
-                  selectedFrameId={selectedFrameId}
-                  onFrameSelect={handleFrameSelect}
-                />
-              </div>
-            )}
-            <div className="border-t border-gray-200 p-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-800">关键词</span>
-              </div>
-              <div className="flex flex-wrap gap-1 mb-2">
+          {/* 悬浮侧栏：分为两个独立卡片 */}
+          <div className="absolute left-4 top-4 z-10 space-y-3">
+            {/* 故事结构卡片 */}
+            <div className={`bg-white/95 backdrop-blur-sm border-r border-gray-200 flex-shrink-0 flex flex-col transition-all duration-300 w-72 rounded-xl shadow-lg ${isSidebarCollapsed ? 'h-12' : 'h-96'}`}>
+              <div className="flex items-center justify-between p-3 border-b border-gray-100">
+                <div className="flex items-center space-x-2">
+                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  <span className="font-medium text-gray-800 text-sm">故事结构</span>
+                </div>
                 <button
-                  onClick={() => setActiveKeywordTypeCanvas('all')}
-                  className={`px-2 py-1 rounded text-xs border ${activeKeywordTypeCanvas === 'all' ? 'bg-gray-900 text-white border-gray-900' : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'}`}
+                  onClick={() => setIsSidebarCollapsed(v => !v)}
+                  className="text-gray-500 hover:text-gray-700 text-xs px-2 py-1 rounded-md hover:bg-gray-100 transition-colors"
                 >
-                  全部 ({selectedKeywords.length})
+                  {isSidebarCollapsed ? '展开' : '收起'}
                 </button>
-                {keywordTypes.map(type => {
-                  const count = selectedKeywords.filter(k => k.type === type.id).length;
-                  if (count === 0) return null;
-                  return (
+              </div>
+              {!isSidebarCollapsed && (
+                <div className="flex-1 overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
+                  <StoryboardTree 
+                    storyData={storyData}
+                    selectedFrameId={selectedFrameId}
+                    onFrameSelect={handleFrameSelect}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* 关键词气泡池卡片 */}
+            <div className={`w-72 rounded-xl shadow-lg bg-white/95 backdrop-blur-sm border border-gray-200 flex-shrink-0 flex flex-col ${isKeywordPoolCollapsed ? 'h-12' : 'h-80'}`}>
+              <div className="flex items-center justify-between p-3 border-b border-gray-100 flex-shrink-0">
+                <div className="flex items-center space-x-2">
+                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
+                  <span className="font-medium text-gray-800 text-sm">关键词气泡池</span>
+                </div>
+                <button
+                  onClick={() => setIsKeywordPoolCollapsed(v => !v)}
+                  className="text-gray-500 hover:text-gray-700 text-xs px-2 py-1 rounded-md hover:bg-gray-100 transition-colors"
+                >
+                  {isKeywordPoolCollapsed ? '展开' : '收起'}
+                </button>
+              </div>
+              
+              {!isKeywordPoolCollapsed && (
+                <div className="flex-1 flex flex-col min-h-0">
+                  {/* 筛选按钮 */}
+                  <div className="flex flex-wrap gap-1.5 p-3 pb-2 flex-shrink-0">
                     <button
-                      key={type.id}
-                      onClick={() => setActiveKeywordTypeCanvas(type.id)}
-                      className={`px-2 py-1 rounded text-xs border ${activeKeywordTypeCanvas === type.id ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200'} ${type.color}`}
+                      onClick={() => setActiveKeywordTypeCanvas('all')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                        activeKeywordTypeCanvas === 'all' 
+                          ? 'bg-gray-900 text-white shadow-sm' 
+                          : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                      }`}
                     >
-                      {type.name} ({count})
+                      全部 ({selectedKeywords.length})
                     </button>
-                  );
-                })}
-              </div>
-              <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-                {(
-                  activeKeywordTypeCanvas === 'all' 
-                    ? selectedKeywords 
-                    : selectedKeywords.filter(k => k.type === activeKeywordTypeCanvas)
-                ).map(keyword => (
-                  <span
-                    key={keyword.id}
-                    className={`px-2 py-1 rounded-2xl text-xs border ${keywordTypes.find(t => t.id === keyword.type)?.color || 'bg-gray-100 text-gray-700 border-gray-200'}`}
-                  >
-                    {keyword.text}
-                  </span>
-                ))}
-                {selectedKeywords.length === 0 && (
-                  <span className="text-xs text-gray-400">暂无关键词</span>
-                )}
-              </div>
+                    {keywordTypes.map(type => {
+                      const count = selectedKeywords.filter(k => k.type === type.id).length;
+                      if (count === 0) return null;
+                      return (
+                        <button
+                          key={type.id}
+                          onClick={() => setActiveKeywordTypeCanvas(type.id)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                            activeKeywordTypeCanvas === type.id 
+                              ? 'bg-gray-900 text-white shadow-sm' 
+                              : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                          }`}
+                        >
+                          {type.name} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* 关键词气泡 - 滚动容器 */}
+                  <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400 min-h-0">
+                    <div className="p-3 pt-0 pb-4 space-y-3">
+                      {keywordTypes.map(type => {
+                        const typeKeywords = selectedKeywords.filter(k => k.type === type.id);
+                        if (typeKeywords.length === 0) return null;
+                        if (activeKeywordTypeCanvas !== 'all' && activeKeywordTypeCanvas !== type.id) return null;
+
+                        return (
+                          <div key={type.id} className="break-inside-avoid">
+                            <h3 className="text-xs font-medium text-gray-700 mb-2 flex items-center">
+                              <span className={`w-2 h-2 rounded-full mr-2 ${type.color.includes('blue') ? 'bg-blue-400' : 
+                                type.color.includes('green') ? 'bg-green-400' :
+                                type.color.includes('red') ? 'bg-red-400' :
+                                type.color.includes('yellow') ? 'bg-yellow-400' : 'bg-purple-400'}`}></span>
+                              {type.name}
+                            </h3>
+                            <div className="flex flex-wrap gap-1.5">
+                              {typeKeywords.map(keyword => (
+                                <div
+                                  key={keyword.id}
+                                  draggable
+                                  onDragStart={(e) => handleDragStart(e, keyword)}
+                                  className={`${type.color} px-3 py-1.5 rounded-lg text-xs font-medium cursor-move hover:shadow-sm transition-all duration-200 border flex-shrink-0`}
+                                  style={{ maxWidth: 'calc(100% - 6px)' }}
+                                >
+                                  <span className="break-words leading-relaxed">{keyword.text}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {selectedKeywords.length === 0 && (
+                        <div className="text-center py-4">
+                          <span className="text-xs text-gray-400">暂无关键词</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

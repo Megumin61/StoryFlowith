@@ -5,7 +5,7 @@ body {
     font-family: 'Inter', 'Noto Sans SC', sans-serif;
 }
 
-/* ÖĞÎÄ×ÖÌåÌØ±ğÉèÖÃ */
+/* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø±ï¿½ï¿½ï¿½ï¿½ï¿½ */
 .chinese-text {
     font-family: 'Noto Sans SC', 'Inter', sans-serif;
 }
@@ -68,7 +68,7 @@ body {
     background-color: #F3F4F6 !important; /* gray-100 */
 }
 
-/* ĞÂÔöÑùÊ½ */
+/* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê½ */
 .persona-item {
     transition: all 0.15s ease-in-out;
 }
@@ -187,4 +187,41 @@ body {
 
 .branch-header .expand-icon.rotate-180 {
     transform: rotate(-180deg);
+}
+
+/* è‡ªå®šä¹‰æ»šåŠ¨æ¡æ ·å¼ */
+.scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db #f3f4f6;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+    background: #f3f4f6;
+    border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 3px;
+    transition: background-color 0.2s ease;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+
+.scrollbar-thumb-gray-300::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+}
+
+.scrollbar-track-gray-100::-webkit-scrollbar-track {
+    background: #f3f4f6;
+}
+
+.hover\:scrollbar-thumb-gray-400:hover::-webkit-scrollbar-thumb {
+    background: #9ca3af;
 }

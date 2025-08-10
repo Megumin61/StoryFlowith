@@ -5,6 +5,26 @@ import { Plus, X, User, Trash2, Highlighter, Check, Eye, Edit3, Save } from 'luc
 import KeywordSelector from './KeywordSelector';
 import PersonaDetail from './PersonaDetail';
 
+// 高度配置常量 - 可以根据需要调整
+const HEIGHT_CONFIG = {
+  // 访谈记录页面
+  interview: {
+    contentMinHeight: 'min-h-[200px]',  // 访谈记录内容最小高度
+    contentMaxHeight: 'max-h-[300px]',  // 访谈记录内容最大高度
+    keywordsMaxHeight: 'max-h-[250px]', // 关键词区域最大高度
+  },
+  // 故事脚本页面
+  story: {
+    textareaHeight: 'h-72',             // 文本域高度 (288px)
+    personasMaxHeight: 'max-h-72',      // 用户画像区域最大高度 (288px)
+  },
+  // 通用设置
+  common: {
+    panelPadding: 'p-6',               // 面板内边距
+    gap: 'gap-6',                      // 面板间距
+  }
+};
+
 function RefinementPage({ initialStoryText, onComplete }) {
   const t = useLocale();
   const [currentStep, setCurrentStep] = useState('interview'); // 'interview', 'persona', 'story'
@@ -42,11 +62,11 @@ function RefinementPage({ initialStoryText, onComplete }) {
 
   // 关键词类型配置
   const keywordTypes = [
-    { id: 'user_traits', name: '用户特征', color: 'bg-blue-100 text-blue-800 border-blue-200' },
-    { id: 'scenarios', name: '使用场景', color: 'bg-green-100 text-green-800 border-green-200' },
-    { id: 'pain_points', name: '痛点问题', color: 'bg-red-100 text-red-800 border-red-200' },
-    { id: 'emotions', name: '情绪状态', color: 'bg-purple-100 text-purple-800 border-purple-200' },
-    { id: 'goals', name: '目标动机', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' }
+    { id: 'user_traits', name: '用户特征', color: 'bg-slate-50 text-slate-700 border-slate-200' },
+    { id: 'scenarios', name: '使用场景', color: 'bg-stone-50 text-stone-700 border-stone-200' },
+    { id: 'pain_points', name: '痛点问题', color: 'bg-rose-50 text-rose-700 border-rose-200' },
+    { id: 'emotions', name: '情绪状态', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+    { id: 'goals', name: '目标动机', color: 'bg-amber-50 text-amber-700 border-amber-200' }
   ];
 
   useEffect(() => {
@@ -365,12 +385,12 @@ ${t.refinement.generated.section3}
 
   // 渲染访谈记录处理页面
   const renderInterviewStep = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className={`grid grid-cols-1 lg:grid-cols-3 ${HEIGHT_CONFIG.common.gap} h-full`}>
       {/* 访谈记录 */}
-      <div className="lg:col-span-2 bg-white rounded-xl p-6 border border-gray-200">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-gray-800 flex items-center">
-            <User className="mr-2 text-blue-500" />
+      <div className={`lg:col-span-2 bg-white rounded-xl ${HEIGHT_CONFIG.common.panelPadding} border border-gray-200 flex flex-col`}>
+        <div className="flex items-center justify-between mb-3 flex-shrink-0">
+          <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+            <User className="mr-2 text-slate-600" />
             用户访谈记录
           </h2>
           <div className="flex items-center space-x-2 text-sm text-gray-600">
@@ -381,7 +401,7 @@ ${t.refinement.generated.section3}
         
         <div 
           ref={contentRef}
-          className="prose relative max-w-none p-4 bg-gray-50 rounded-lg border border-gray-200 min-h-[400px] leading-relaxed text-gray-700 select-text"
+          className={`prose relative max-w-none p-3 bg-gray-50 rounded-lg border border-gray-200 ${HEIGHT_CONFIG.interview.contentMinHeight} ${HEIGHT_CONFIG.interview.contentMaxHeight} leading-relaxed text-gray-700 select-text overflow-y-auto`}
           onMouseDown={startCustomSelection}
           onContextMenu={(e) => e.preventDefault()}
           style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
@@ -391,26 +411,26 @@ ${t.refinement.generated.section3}
             {dragHighlightRects.map((r, idx) => (
               <div
                 key={idx}
-                className="bg-blue-300/30 rounded-sm"
+                className="bg-slate-300/30 rounded-sm"
                 style={{ position: 'absolute', left: r.left, top: r.top, width: r.width, height: r.height }}
               />
             ))}
           </div>
           {interviewData.text.split('\n').map((paragraph, index) => (
-            <p key={index} className="mb-4">
+            <p key={index} className="mb-3">
               {paragraph}
             </p>
           ))}
         </div>
         
-        <div className="mt-4 flex items-center justify-between">
+        <div className="mt-3 flex items-center justify-between flex-shrink-0">
           <div className="text-sm text-gray-600">
             已提取 {selectedKeywords.length} 个关键词
           </div>
           <button
             onClick={generatePersonas}
             disabled={selectedKeywords.length === 0}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            className="bg-slate-600 text-white px-4 py-2 rounded-lg hover:bg-slate-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm"
           >
             生成用户画像
           </button>
@@ -418,89 +438,89 @@ ${t.refinement.generated.section3}
       </div>
 
       {/* 关键词气泡 */}
-      <div className="bg-white rounded-xl p-6 border border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">提取的关键词</h3>
+      <div className={`bg-white rounded-xl ${HEIGHT_CONFIG.common.panelPadding} border border-gray-200 flex flex-col`}>
+        <h3 className="text-lg font-semibold text-gray-800 mb-3 flex-shrink-0">提取的关键词</h3>
         
-        <div className="space-y-3 max-h-[500px] overflow-y-auto">
-          {keywordTypes.map(type => {
-            const typeKeywords = selectedKeywords.filter(k => k.type === type.id);
-            if (typeKeywords.length === 0) return null;
+        <div className={`${HEIGHT_CONFIG.interview.keywordsMaxHeight} overflow-y-auto`}>
+          <div className="space-y-2">
+            {keywordTypes.map(type => {
+              const typeKeywords = selectedKeywords.filter(k => k.type === type.id);
+              if (typeKeywords.length === 0) return null;
 
-  return (
-              <div key={type.id} className="space-y-2">
-                <h4 className="text-sm font-medium text-gray-700">{type.name}</h4>
-                <div className="space-y-2">
-                  {typeKeywords.map(keyword => (
-                    <div 
-                      key={keyword.id}
-                      className={`flex items-center justify-between p-2 rounded-lg border ${type.color}`}
-                    >
-                      <span className="text-sm flex-1">{keyword.text}</span>
-                      <button
-                        onClick={() => removeKeyword(keyword.id)}
-                        className="ml-2 text-gray-500 hover:text-red-500"
+              return (
+                <div key={type.id} className="space-y-2">
+                  <h4 className="text-sm font-medium text-gray-700">{type.name}</h4>
+                  <div className="space-y-1">
+                    {typeKeywords.map(keyword => (
+                      <div 
+                        key={keyword.id}
+                        className={`inline-flex items-center justify-between p-2 rounded-lg border ${type.color} max-w-full`}
                       >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
+                        <span className="text-sm flex-1 break-words pr-2">{keyword.text}</span>
+                        <button
+                          onClick={() => removeKeyword(keyword.id)}
+                          className="text-gray-500 hover:text-rose-500 flex-shrink-0 p-0.5 rounded hover:bg-rose-50 transition-colors"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-        
-        {selectedKeywords.length === 0 && (
-          <div className="text-center text-gray-500 py-8">
-            <Highlighter className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-            <p>在左侧文本中圈选关键词</p>
+              );
+            })}
           </div>
-        )}
+          
+          {selectedKeywords.length === 0 && (
+            <div className="text-center text-gray-500 py-6">
+              <Highlighter className="w-6 h-6 mx-auto mb-2 text-gray-300" />
+              <p className="text-sm">在左侧文本中圈选关键词</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 
   // 渲染用户画像页面
   const renderPersonaStep = () => (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold text-gray-800">生成的用户画像</h2>
+        <h2 className="text-xl font-semibold text-gray-800">生成的用户画像</h2>
         <div className="flex space-x-2">
           <button
             onClick={() => setCurrentStep('interview')}
-            className="text-gray-600 hover:text-gray-800 px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition-colors"
+            className="text-gray-600 hover:text-gray-800 px-3 py-1.5 rounded-lg border border-gray-300 hover:border-gray-400 transition-colors text-sm"
           >
             返回编辑
           </button>
           <button
             onClick={() => setCurrentStep('story')}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            className="bg-slate-600 text-white px-4 py-1.5 rounded-lg hover:bg-slate-700 transition-colors text-sm"
           >
             继续下一步
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {personas.map((persona, index) => (
-          <div key={index} className="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-shadow">
-            <div className="flex items-start justify-between mb-4">
+          <div key={index} className="bg-white rounded-xl p-4 border border-gray-200 hover:shadow-lg transition-shadow">
+            <div className="flex items-start justify-between mb-3">
               <div>
-                <h3 className="text-xl font-semibold text-gray-800">{persona.persona_name}</h3>
+                <h3 className="text-lg font-semibold text-gray-800">{persona.persona_name}</h3>
                 <p className="text-sm text-gray-600 mt-1">{persona.basic_profile.age} · {persona.basic_profile.occupation}</p>
               </div>
-                             <button
-                 onClick={() => handleViewPersonaDetail(persona)}
-                 className="text-blue-600 hover:text-blue-700"
-               >
-                 <Eye size={20} />
-               </button>
+              <button
+                onClick={() => handleViewPersonaDetail(persona)}
+                className="text-slate-600 hover:text-slate-700"
+              >
+                <Eye size={18} />
+              </button>
             </div>
             
-            <p className="text-gray-700 mb-4 italic">"{persona.memorable_quote}"</p>
-            <p className="text-sm text-gray-600 mb-4">{persona.persona_summary}</p>
-            
-            
+            <p className="text-gray-700 mb-3 italic text-sm">"{persona.memorable_quote}"</p>
+            <p className="text-sm text-gray-600 mb-3">{persona.persona_summary}</p>
           </div>
         ))}
       </div>
@@ -509,74 +529,78 @@ ${t.refinement.generated.section3}
 
   // 渲染故事脚本页面
   const renderStoryStep = () => (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Story Script Section */}
-            <div className="bg-gray-50 rounded-xl p-6 border">
-              <h2 className="text-2xl font-semibold text-gray-800 mb-4 flex items-center">
-                <User className="mr-3 text-blue-500" />
-                {t.refinement.storyTitle}
-              </h2>
-              <textarea
-                className="w-full h-96 p-4 bg-white border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out text-base font-mono"
-                value={story}
-                onChange={(e) => setStory(e.target.value)}
-              />
-            </div>
+    <div className={`grid grid-cols-1 lg:grid-cols-2 ${HEIGHT_CONFIG.common.gap} h-full`}>
+      {/* Story Script Section */}
+      <div className={`bg-gray-50 rounded-xl ${HEIGHT_CONFIG.common.panelPadding} border flex flex-col`}>
+        <h2 className="text-xl font-semibold text-gray-800 mb-3 flex items-center flex-shrink-0">
+          <User className="mr-2 text-slate-600" />
+          {t.refinement.storyTitle}
+        </h2>
+        <textarea
+          className={`${HEIGHT_CONFIG.story.textareaHeight} p-3 bg-white border-gray-300 rounded-lg focus:ring-slate-500 focus:border-slate-500 transition duration-150 ease-in-out text-sm font-mono resize-none`}
+          value={story}
+          onChange={(e) => setStory(e.target.value)}
+        />
+      </div>
 
-            {/* User Personas Section */}
-            <div className="bg-gray-50 rounded-xl p-6 border">
-              <h2 className="text-2xl font-semibold text-gray-800 mb-4 flex items-center">
-                <User className="mr-3 text-green-500" />
-                {t.refinement.personaTitle}
-              </h2>
-              <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-                {personas.map((persona, index) => (
-            <div key={index} className="bg-white p-4 rounded-lg border border-gray-200">
-              <h3 className="font-semibold text-gray-800 mb-2">{persona.persona_name}</h3>
-              <p className="text-sm text-gray-600 mb-2">{persona.persona_summary}</p>
-              <p className="text-xs text-gray-500 italic">"{persona.memorable_quote}"</p>
-                  </div>
-                ))}
+      {/* User Personas Section */}
+      <div className={`bg-gray-50 rounded-xl ${HEIGHT_CONFIG.common.panelPadding} border flex flex-col`}>
+        <h2 className="text-xl font-semibold text-gray-800 mb-3 flex items-center flex-shrink-0">
+          <User className="mr-2 text-stone-600" />
+          {t.refinement.personaTitle}
+        </h2>
+        <div className={`${HEIGHT_CONFIG.story.personasMaxHeight} overflow-y-auto pr-2`}>
+          <div className="space-y-3">
+            {personas.map((persona, index) => (
+              <div key={index} className="bg-white p-3 rounded-lg border border-gray-200">
+                <h3 className="font-semibold text-gray-800 mb-2 text-sm">{persona.persona_name}</h3>
+                <p className="text-sm text-gray-600 mb-2">{persona.persona_summary}</p>
+                <p className="text-xs text-gray-500 italic">"{persona.memorable_quote}"</p>
               </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
 
   return (
     <motion.div
-      className="absolute inset-0 bg-gray-50 z-40 p-4 sm:p-6 lg:p-8 overflow-y-auto"
+      className="absolute inset-0 bg-gray-50 z-40 p-4 overflow-hidden"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
       transition={{ duration: 0.5 }}
     >
-      <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-2xl shadow-lg p-8">
-          <div className="mb-8">
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-gray-900 mb-2">
+      <div className="max-w-7xl mx-auto h-full">
+        <div className="bg-white rounded-2xl shadow-lg p-6 h-full flex flex-col">
+          <div className="mb-4 flex-shrink-0">
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 mb-1">
               {currentStep === 'interview' ? '访谈记录分析' : 
                currentStep === 'persona' ? '用户画像生成' : '故事脚本完善'}
             </h1>
-            <p className="text-lg text-gray-600">
+            <p className="text-sm text-gray-600">
               {currentStep === 'interview' ? '第一步：从访谈记录中提取关键信息，圈选用户特征、场景和痛点' :
                currentStep === 'persona' ? '第二步：基于提取的信息生成详细的用户画像' :
                '第三步：完善故事脚本并确认用户画像'}
             </p>
           </div>
           
-          {currentStep === 'interview' && renderInterviewStep()}
-          {currentStep === 'persona' && renderPersonaStep()}
-          {currentStep === 'story' && renderStoryStep()}
+          <div className="flex-1 min-h-0">
+            {currentStep === 'interview' && renderInterviewStep()}
+            {currentStep === 'persona' && renderPersonaStep()}
+            {currentStep === 'story' && renderStoryStep()}
+          </div>
           
           {currentStep === 'story' && (
-          <div className="mt-8 text-center">
-            <button
-              onClick={handleComplete}
-              className="bg-blue-600 text-white font-semibold py-3 px-12 rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 transform hover:scale-105"
-            >
-              {t.refinement.button}
-            </button>
-          </div>
+            <div className="mt-4 text-center flex-shrink-0">
+              <button
+                onClick={handleComplete}
+                className="bg-slate-600 text-white font-semibold py-2 px-8 rounded-lg shadow-md hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-all duration-200 transform hover:scale-105"
+              >
+                {t.refinement.button}
+              </button>
+            </div>
           )}
         </div>
       </div>
