@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  X, Image, Frown, Meh, Smile, Lightbulb, MousePointerClick,
-  GitFork, CheckCircle, Map, KeyRound, FileText, Users
+import { 
+  Menu, X, Plus, Settings, Map, MousePointerClick, FileText, Users
 } from 'lucide-react';
 import { LocaleProvider, useLocale } from './contexts/LocaleContext';
 import IdeaModal from './components/IdeaModal';
@@ -12,9 +11,11 @@ import JourneyMap from './components/JourneyMap';
 import StoryTree from './components/StoryTree';
 import StoryScript from './components/StoryScript';
 import UserPersonas from './components/UserPersonas';
-import RefinementPage from './components/RefinementPage'; // 新�：�入新页面组件
-import StoryboardTest from './components/StoryboardTest'; // ������������Է־����
+import RefinementPage from './components/RefinementPage'; // 新：入新页面组件
+import StoryboardTest from './components/StoryboardTest'; // Է־
 import FalaiTest from './components/FalaiTest'; // 导入FalAI测试组件
+import ExplorationNodeTest from './components/ExplorationNodeTest'; // 导入探索节点测试组件
+import StoryTreeTest from './components/StoryTreeTest'; // 导入故事树测试组件
 import config from './config';
 import textUtils from './utils/textUtils';
 import './App.css';
@@ -34,6 +35,8 @@ function AppContent() {
   const [showRefinementPage, setShowRefinementPage] = useState(false);
   const [showStoryboardTest, setShowStoryboardTest] = useState(true); // 修改为默认显示测试分镜页
   const [showFalaiTest, setShowFalaiTest] = useState(false);
+  const [showExplorationNodeTest, setShowExplorationNodeTest] = useState(false); // 添加探索节点测试状态
+  const [showStoryTreeTest, setShowStoryTreeTest] = useState(false); // 添加故事树测试状态
   const [showJourneyMap, setShowJourneyMap] = useState(false);
   const [showStoryScript, setShowStoryScript] = useState(false);
   const [showUserPersonas, setShowUserPersonas] = useState(false);
@@ -111,18 +114,22 @@ function AppContent() {
     document.title = t.app.title + ' - ' + t.app.subtitle;
   }, [t]);
 
-  const handleGenerateCanvas = (idea) => { // 俔�：接收初始故�
+  const handleGenerateCanvas = (idea) => { // 俔：接收初始故
     setUserInput(idea); // 保存用户输入
-    // 模拟AI处理，使用�设故事结�
+    // 模拟AI处理，使用设故事结
     const initialFrames = [...t.initialStory].map((frame, index) => {
       if (index === 0) {
-        return { ...frame, description: `${frame.description}\n\n## 原�想法\n${idea}` };
+        return { ...frame, description: `${frame.description}\n\n## 原想法\n${idea}` };
       }
       return frame;
     });
-    setStoryData(initialFrames); // 使用带用户想法的预�故事
+    setStoryData(initialFrames); // 使用带用户想法的预故事
+    // 自动选择第一个分镜，聚焦视角
+    if (initialFrames.length > 0) {
+      setSelectedFrameId(initialFrames[0].id);
+    }
     setShowIdea(false);
-    setShowRefinementPage(true); // 显示新页�
+    setShowRefinementPage(true); // 显示新页
   };
 
   const handleTestStoryboard = (idea) => { // �������������Է־���ť���
@@ -149,6 +156,26 @@ function AppContent() {
 
   const handleCloseFalaiTest = () => {
     setShowFalaiTest(false);
+    setShowIdea(true);
+  };
+
+  const handleTestExplorationNode = () => {
+    setShowIdea(false);
+    setShowExplorationNodeTest(true);
+  };
+
+  const handleCloseExplorationNodeTest = () => {
+    setShowExplorationNodeTest(false);
+    setShowIdea(true);
+  };
+
+  const handleTestStoryTree = () => {
+    setShowIdea(false);
+    setShowStoryTreeTest(true);
+  };
+
+  const handleCloseStoryTreeTest = () => {
+    setShowStoryTreeTest(false);
     setShowIdea(true);
   };
 
@@ -268,6 +295,20 @@ function AppContent() {
                   <Map className="w-4 h-4" />
                   <span>{t.header.generateMap}</span>
                 </button>
+                <button
+                  className="flex items-center space-x-2 text-sm font-medium text-white bg-blue-600 px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                  onClick={handleTestExplorationNode}
+                >
+                  <MousePointerClick className="w-4 h-4" />
+                  <span>{t.header.exploreNode}</span>
+                </button>
+                <button
+                  className="flex items-center space-x-2 text-sm font-medium text-white bg-green-600 px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                  onClick={handleTestStoryTree}
+                >
+                  <Map className="w-4 h-4" />
+                  <span>分支关系测试</span>
+                </button>
               </motion.div>
             )}
             </AnimatePresence>
@@ -282,6 +323,8 @@ function AppContent() {
               onGenerate={handleGenerateCanvas} 
               onTestStoryboard={handleTestStoryboard} 
               onTestFalai={handleTestFalai} // 添加FalAI测试按钮的处理函数
+              onTestExplorationNode={handleTestExplorationNode} // 添加探索节点测试按钮的处理函数
+              onTestStoryTree={handleTestStoryTree} // 添加故事树测试按钮的处理函数
             />
           )}
         </AnimatePresence>
@@ -328,6 +371,48 @@ function AppContent() {
                 </button>
               </div>
               <FalaiTest />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showExplorationNodeTest && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-white"
+            >
+              <div className="absolute top-4 right-4">
+                <button
+                  onClick={handleCloseExplorationNodeTest}
+                  className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <ExplorationNodeTest />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showStoryTreeTest && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-white"
+            >
+              <div className="absolute top-4 right-4">
+                <button
+                  onClick={handleCloseStoryTreeTest}
+                  className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <StoryTreeTest />
             </motion.div>
           )}
         </AnimatePresence>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { PanelLeft, PanelLeftClose, Folder, Film, ChevronDown, CornerDownRight } from 'lucide-react';
+import { PanelLeft, PanelLeftClose, Folder, Film, ChevronDown, CornerDownRight, GitBranch } from 'lucide-react';
 import { useLocale } from '../contexts/LocaleContext';
 
 function StoryTree({ storyData, selectedFrameId, onFrameSelect }) {
@@ -10,9 +10,14 @@ function StoryTree({ storyData, selectedFrameId, onFrameSelect }) {
     renderStoryTree();
   }, [storyData, selectedFrameId]);
 
-  const renderStoryTree = () => {
+  // 分析故事结构，识别主线和分支
+  const analyzeStoryStructure = () => {
     const nodesById = new Map(storyData.map(node => [node.id, node]));
     const childrenOf = new Map();
+    const explorationNodes = new Map(); // 探索节点映射
+    const branchGroups = new Map(); // 分支组映射
+    
+    // 构建父子关系
     storyData.forEach(node => {
       if (node.connections) {
         node.connections.forEach(childId => {
@@ -21,26 +26,58 @@ function StoryTree({ storyData, selectedFrameId, onFrameSelect }) {
         });
       }
     });
+
+    // 识别探索节点和分支
+    storyData.forEach(node => {
+      // 检查是否为探索节点
+      if (node.explorationData?.isExplorationNode || node.type === 'exploration') {
+        explorationNodes.set(node.id, node);
+        
+        // 查找从该探索节点生成的分支
+        const branches = storyData.filter(n => 
+          n.branchData && n.branchData.parentNodeId === node.id
+        );
+        
+        if (branches.length > 0) {
+          branchGroups.set(node.id, {
+            explorationNode: node,
+            branches: branches.sort((a, b) => (a.branchData.branchIndex || 0) - (b.branchData.branchIndex || 0))
+          });
+        }
+      }
+    });
+
+    return { nodesById, childrenOf, explorationNodes, branchGroups };
+  };
+
+  const renderStoryTree = () => {
+    const { nodesById, childrenOf, explorationNodes, branchGroups } = analyzeStoryStructure();
     
-    // �ҵ����ڵ�
+    // 找到根节点
     const rootId = storyData.find(node => !childrenOf.has(node.id))?.id || (storyData.length > 0 ? storyData[0].id : null);
     
-    return rootId ? renderPath(rootId, nodesById, childrenOf) : null;
+    return rootId ? renderPath(rootId, nodesById, childrenOf, explorationNodes, branchGroups) : null;
   };
   
-  const renderPath = (nodeId, nodesById, childrenOf) => {
+  const renderPath = (nodeId, nodesById, childrenOf, explorationNodes, branchGroups) => {
     const visited = new Set();
     const mainPath = [];
     let branchCounter = 0;
     
     let currentNodeId = nodeId;
     
+    // 构建主线路径
     while (currentNodeId && !visited.has(currentNodeId)) {
       const currentNode = nodesById.get(currentNodeId);
       if (!currentNode) break;
       
       visited.add(currentNodeId);
       mainPath.push(currentNode);
+      
+      // 如果是探索节点，不继续主线路径
+      if (explorationNodes.has(currentNodeId)) {
+        break;
+      }
       
       if (currentNode.connections && currentNode.connections.length > 0) {
         currentNodeId = currentNode.connections[0];
@@ -56,37 +93,45 @@ function StoryTree({ storyData, selectedFrameId, onFrameSelect }) {
           <span>{t.storyTree.mainStory}</span>
         </li>
         {mainPath.map((node, index) => {
-          const emotionMap = { 'frustrated': '?', 'neutral': '?', 'relieved': '?', 'frown': '?', 'meh': '?', 'smile': '?', 'lightbulb': '?' };
-          const emotionIcon = emotionMap[node.emotion] || '?';
-          const titleText = node.title.length > 20 ? node.title.substring(0, 20) + '...' : node.title;
-          
-          const hasBranches = node.connections && node.connections.length > 1;
+          const isExplorationNode = explorationNodes.has(node.id);
+          const hasBranches = branchGroups.has(node.id);
+          const titleText = node.title?.length > 20 ? node.title.substring(0, 20) + '...' : (node.label || `分镜 ${index + 1}`);
           
           return (
             <li key={node.id} className={`story-tree-node ${hasBranches ? 'has-branches' : ''} is-main`}>
               <div 
-                className={`node-content w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer ${node.id === selectedFrameId ? 'active' : ''}`}
+                className={`node-content w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer transition-colors ${node.id === selectedFrameId ? 'bg-blue-100 border border-blue-500' : ''}`}
                 onClick={() => onFrameSelect(node.id)}
               >
-                <Film className="w-4 h-4 flex-shrink-0 text-gray-500" />
-                <span className="flex-grow text-sm text-gray-800 truncate" title={node.title}>{titleText}</span>
-                <span className="flex-shrink-0">{emotionIcon}</span>
+                {isExplorationNode ? (
+                  <GitBranch className="w-4 h-4 flex-shrink-0 text-purple-500" />
+                ) : (
+                  <Film className="w-4 h-4 flex-shrink-0 text-gray-500" />
+                )}
+                <span className="flex-grow text-sm text-gray-800 truncate" title={node.title || node.label}>
+                  {isExplorationNode ? '🔍 探索节点' : titleText}
+                </span>
+                <span className="flex-shrink-0 text-xs">
+                  {isExplorationNode ? '🔍' : '📽️'}
+                </span>
               </div>
               
+              {/* 显示分支组 */}
               {hasBranches && (
-                <ul className="branch-container pl-4">
-                  {node.connections.slice(1).map((branchId, idx) => {
+                <ul className="branch-container pl-4 mt-1">
+                  {branchGroups.get(node.id).branches.map((branchNode, idx) => {
                     branchCounter++;
-                    const branchName = t.storyTree.branchNameTemplate.replace('{letter}', String.fromCharCode(64 + branchCounter));
+                    const branchName = branchNode.branchData?.branchName || `分支 ${String.fromCharCode(64 + branchCounter)}`;
                     
                     return (
                       <BranchNode 
-                        key={branchId} 
-                        branchId={branchId}
+                        key={branchNode.id} 
+                        branchId={branchNode.id}
                         branchName={branchName} 
                         nodesById={nodesById}
                         selectedFrameId={selectedFrameId}
                         onFrameSelect={onFrameSelect}
+                        explorationNode={node}
                       />
                     );
                   })}
@@ -122,7 +167,7 @@ function StoryTree({ storyData, selectedFrameId, onFrameSelect }) {
   );
 }
 
-function BranchNode({ branchId, branchName, nodesById, selectedFrameId, onFrameSelect }) {
+function BranchNode({ branchId, branchName, nodesById, selectedFrameId, onFrameSelect, explorationNode }) {
   const [isExpanded, setIsExpanded] = useState(true);
   
   const toggleExpand = (e) => {
@@ -134,23 +179,31 @@ function BranchNode({ branchId, branchName, nodesById, selectedFrameId, onFrameS
     const node = nodesById.get(nodeId);
     if (!node) return null;
     
-    const emotionMap = { 'frustrated': '?', 'neutral': '?', 'relieved': '?', 'frown': '?', 'meh': '?', 'smile': '?', 'lightbulb': '?' };
-    const emotionIcon = emotionMap[node.emotion] || '?';
-    const titleText = node.title.length > 20 ? node.title.substring(0, 20) + '...' : node.title;
+    const isExplorationNode = node.explorationData?.isExplorationNode || node.type === 'exploration';
+    const titleText = node.title?.length > 20 ? node.title.substring(0, 20) + '...' : (node.label || '分镜');
     
     return (
       <li key={node.id} className="story-tree-node is-branch">
         <div 
-          className={`node-content w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer ${node.id === selectedFrameId ? 'active' : ''}`}
+          className={`node-content w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer transition-colors ${node.id === selectedFrameId ? 'bg-blue-100 border border-blue-500' : ''}`}
           onClick={() => onFrameSelect(node.id)}
         >
-          <Film className="w-4 h-4 flex-shrink-0 text-gray-500" />
-          <span className="flex-grow text-sm text-gray-800 truncate" title={node.title}>{titleText}</span>
-          <span className="flex-shrink-0">{emotionIcon}</span>
+          {isExplorationNode ? (
+            <GitBranch className="w-4 h-4 flex-shrink-0 text-purple-500" />
+          ) : (
+            <Film className="w-4 h-4 flex-shrink-0 text-gray-500" />
+          )}
+          <span className="flex-grow text-sm text-gray-800 truncate" title={node.title || node.label}>
+            {isExplorationNode ? '🔍 探索节点' : titleText}
+          </span>
+          <span className="flex-shrink-0 text-xs">
+            {isExplorationNode ? '🔍' : '📽️'}
+          </span>
         </div>
         
+        {/* 递归渲染分支内的子节点 */}
         {node.connections && node.connections.length > 0 && (
-          <ul className="pl-4">
+          <ul className="pl-4 mt-1">
             {node.connections.map(childId => renderBranchNodes(childId))}
           </ul>
         )}
@@ -161,7 +214,7 @@ function BranchNode({ branchId, branchName, nodesById, selectedFrameId, onFrameS
   return (
     <li>
       <div 
-        className="branch-header flex items-center gap-2 p-2 cursor-pointer text-sm font-medium text-yellow-700 bg-yellow-50/80 rounded-md my-1"
+        className="branch-header flex items-center gap-2 p-2 cursor-pointer text-sm font-medium text-blue-700 bg-blue-50/80 rounded-md my-1 hover:bg-blue-100/80 transition-colors"
         onClick={toggleExpand}
       >
         <CornerDownRight className="w-4 h-4 flex-shrink-0" />
@@ -169,7 +222,7 @@ function BranchNode({ branchId, branchName, nodesById, selectedFrameId, onFrameS
         <ChevronDown className={`w-4 h-4 expand-icon transition-transform ${!isExpanded ? 'rotate-180' : ''}`} />
       </div>
       
-      <ul className={`branch-content pl-4 border-l-2 border-yellow-200 ${isExpanded ? '' : 'hidden'}`}>
+      <ul className={`branch-content pl-4 border-l-2 border-blue-200 ${isExpanded ? '' : 'hidden'}`}>
         {renderBranchNodes(branchId)}
       </ul>
     </li>

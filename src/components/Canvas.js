@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Image, Frown, Meh, Smile, Lightbulb } from 'lucide-react';
 import { useLocale } from '../contexts/LocaleContext';
 
-function Canvas({ storyData, selectedFrameId, onFrameSelect }) {
+function Canvas({ storyData, storyModel, selectedFrameId, onFrameSelect }) {
   const t = useLocale();
   const canvasWorldRef = useRef(null);
   const canvasContainerRef = useRef(null);
@@ -14,18 +14,42 @@ function Canvas({ storyData, selectedFrameId, onFrameSelect }) {
   useEffect(() => {
     renderConnections();
     const cleanup = initCanvasControls();
+    
+    // 自动聚焦到选中的分镜（只在首次加载时）
+    if (selectedFrameId && storyData.length > 0 && !worldPosRef.current.hasFocused) {
+      const selectedFrame = storyData.find(frame => frame.id === selectedFrameId);
+      if (selectedFrame && canvasWorldRef.current) {
+        // 计算需要移动的距离，使选中的分镜居中显示
+        const containerWidth = canvasContainerRef.current?.clientWidth || 800;
+        const containerHeight = canvasContainerRef.current?.clientHeight || 600;
+        const targetX = containerWidth / 2 - selectedFrame.pos.x - 144; // 144是分镜宽度的一半
+        const targetY = containerHeight / 2 - selectedFrame.pos.y - 100; // 100是分镜高度的一半
+        
+        worldPosRef.current.x = targetX;
+        worldPosRef.current.y = targetY;
+        worldPosRef.current.hasFocused = true;
+        
+        if (canvasWorldRef.current) {
+          canvasWorldRef.current.style.transform = `translate(${targetX}px, ${targetY}px)`;
+        }
+      }
+    }
+    
     return cleanup;
   }, [storyData, selectedFrameId]);
 
   const renderConnections = () => {
     const svg = document.getElementById('canvas-connections');
-    if (!svg) return;
+    if (!svg || !storyModel) return;
     
+    // 清除现有的连接线和圆点，保留defs
     const existingDefs = svg.querySelector('defs');
-    svg.innerHTML = '';
-    if(existingDefs) svg.appendChild(existingDefs);
-
-    if (!svg.querySelector('#arrowhead')) {
+    const existingPaths = svg.querySelectorAll('path');
+    const existingCircles = svg.querySelectorAll('circle');
+    existingPaths.forEach(path => path.remove());
+    existingCircles.forEach(circle => circle.remove());
+    
+    if (!existingDefs) {
       const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
       defs.innerHTML = `
         <marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5"
@@ -37,33 +61,145 @@ function Canvas({ storyData, selectedFrameId, onFrameSelect }) {
       svg.appendChild(defs);
     }
 
-    storyData.forEach(fromFrameData => {
-      if (fromFrameData.connections && fromFrameData.connections.length > 0) {
-        fromFrameData.connections.forEach(toId => {
-          const toFrameData = storyData.find(f => f.id === toId);
-          if (toFrameData) {
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            const fromX = fromFrameData.pos.x + 288;
-            const fromY = fromFrameData.pos.y + 125;
-            const toX = toFrameData.pos.x;
-            const toY = toFrameData.pos.y + 125;
-            
-            const controlX1 = fromX + Math.abs(toX-fromX) * 0.5;
-            const controlY1 = fromY;
-            const controlX2 = toX - Math.abs(toX-fromX) * 0.5;
-            const controlY2 = toY;
-
-            line.setAttribute('d', `M ${fromX} ${fromY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${toX} ${toY}`);
-            line.setAttribute('stroke', '#9ca3af');
-            line.setAttribute('stroke-width', '2');
-            line.setAttribute('fill', 'none');
-            line.setAttribute('marker-end', 'url(#arrowhead)');
-            
-            svg.appendChild(line);
-          }
-        });
+    // 第一步：绘制分支内部的连线
+    Object.values(storyModel.branches).forEach(branch => {
+      const branchNodes = branch.nodeIds
+        .map(nodeId => storyModel.nodes[nodeId])
+        .filter(Boolean)
+        .sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
+      
+      // 在分支内的相邻节点之间绘制实线
+      for (let i = 0; i < branchNodes.length - 1; i++) {
+        const fromNode = branchNodes[i];
+        const toNode = branchNodes[i + 1];
+        
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        
+        // 动态计算节点宽度和高度
+        const fromWidth = getNodeWidth(fromNode);
+        const toWidth = getNodeWidth(toNode);
+        const fromHeight = getNodeHeight(fromNode);
+        const toHeight = getNodeHeight(toNode);
+        
+        // 连接基于真实显示宽度，避免重复叠加面板宽度
+        const fromX = fromNode.pos.x + fromWidth;
+        const fromY = fromNode.pos.y + fromHeight / 2;
+        const toX = toNode.pos.x;
+        const toY = toNode.pos.y + toHeight / 2;
+        
+        // 创建直线连接
+        line.setAttribute('d', `M ${fromX} ${fromY} L ${toX} ${toY}`);
+        line.setAttribute('stroke', '#9ca3af'); // 统一使用灰色
+        line.setAttribute('stroke-width', '1.5'); // 细线
+        line.setAttribute('fill', 'none');
+        line.setAttribute('marker-end', 'url(#arrowhead)');
+        
+        svg.appendChild(line);
+        
+        // 添加连接点圆点
+        const fromCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        fromCircle.setAttribute('cx', fromX);
+        fromCircle.setAttribute('cy', fromY);
+        fromCircle.setAttribute('r', '3');
+        fromCircle.setAttribute('fill', '#9ca3af');
+        svg.appendChild(fromCircle);
+        
+        const toCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        toCircle.setAttribute('cx', toX);
+        toCircle.setAttribute('cy', toY);
+        toCircle.setAttribute('r', '3');
+        toCircle.setAttribute('fill', '#9ca3af');
+        svg.appendChild(toCircle);
       }
     });
+
+    // 第二步：绘制分支点的连线（从起源节点到分支第一个节点）
+    Object.values(storyModel.branches).forEach(branch => {
+      if (branch.originNodeId && branch.nodeIds.length > 0) {
+        const originNode = storyModel.nodes[branch.originNodeId];
+        const firstBranchNode = storyModel.nodes[branch.nodeIds[0]];
+        
+        if (originNode && firstBranchNode) {
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          
+          // 动态计算节点宽度和高度
+                  const originWidth = getNodeWidth(originNode);
+        const firstBranchWidth = getNodeWidth(firstBranchNode);
+        const originHeight = getNodeHeight(originNode);
+        const firstBranchHeight = getNodeHeight(firstBranchNode);
+        
+        // 基于真实显示宽度计算连接点
+        const fromX = originNode.pos.x + originWidth;
+        const fromY = originNode.pos.y + originHeight / 2;
+        const toX = firstBranchNode.pos.x;
+        const toY = firstBranchNode.pos.y + firstBranchHeight / 2;
+          
+          // 创建曲线连接
+          const distance = Math.abs(toX - fromX);
+          const controlX1 = fromX + distance * 0.3;
+          const controlY1 = fromY;
+          const controlX2 = toX - distance * 0.3;
+          const controlY2 = toY;
+          
+          line.setAttribute('d', `M ${fromX} ${fromY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${toX} ${toY}`);
+          line.setAttribute('stroke', '#9ca3af'); // 统一使用灰色
+          line.setAttribute('stroke-width', '1.5'); // 细线
+          line.setAttribute('stroke-dasharray', '4,4'); // 虚线表示分支
+          line.setAttribute('fill', 'none');
+          line.setAttribute('marker-end', 'url(#arrowhead)');
+          
+          svg.appendChild(line);
+          
+          // 添加连接点圆点
+          const fromCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          fromCircle.setAttribute('cx', fromX);
+          fromCircle.setAttribute('cy', fromY);
+          fromCircle.setAttribute('r', '3');
+          fromCircle.setAttribute('fill', '#9ca3af');
+          svg.appendChild(fromCircle);
+          
+          const toCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          toCircle.setAttribute('cx', toX);
+          toCircle.setAttribute('cy', toY);
+          toCircle.setAttribute('r', '3');
+          toCircle.setAttribute('fill', '#9ca3af');
+          svg.appendChild(toCircle);
+        }
+      }
+    });
+  };
+
+  // 辅助函数：动态计算节点宽度
+  const getNodeWidth = (node) => {
+    if (!node) return 240;
+
+    // Exploration 节点按照面板开关返回真实显示宽度
+    if (node.type === 'exploration' || node.explorationData?.isExplorationNode) {
+      return node.showBubblesPanel ? 800 : 400;
+    }
+
+    // 普通分镜：展开时包含右侧面板宽度（132）
+    const isExpanded = node.state && node.state !== 'collapsed';
+    return isExpanded ? 360 + 132 : 240;
+  };
+
+  // 辅助函数：动态计算节点高度
+  const getNodeHeight = (node) => {
+    if (!node) return 200;
+    
+    // 优先使用真实测量的高度
+    if (node.actualHeight) {
+      return node.actualHeight;
+    }
+    
+    // 如果真实高度不存在，使用估算高度
+    if (node.state === 'image') {
+      return 280; // 图片状态较高
+    } else if (node.state && node.state !== 'collapsed') {
+      return 250; // 展开状态
+    }
+    
+    return 200; // 默认折叠状态
   };
 
   const initCanvasControls = () => {
@@ -107,6 +243,35 @@ function Canvas({ storyData, selectedFrameId, onFrameSelect }) {
       window.removeEventListener('mouseup', handleMouseUp);
     };
   };
+
+  // 监听节点状态变化，重新渲染连接线
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      renderConnections();
+    }, 200); // 增加延迟时间，确保DOM完全更新
+    
+    return () => clearTimeout(timer);
+  }, [storyModel, selectedFrameId]); // 添加selectedFrameId依赖，确保选中状态变化时重新渲染
+
+  // 添加额外的监听器，确保节点状态变化时重新渲染
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setTimeout(() => {
+        renderConnections();
+      }, 100);
+    });
+
+    // 监听所有节点元素的变化
+    const nodeElements = document.querySelectorAll('[data-node-id]');
+    nodeElements.forEach(element => {
+      observer.observe(element, {
+        attributes: true,
+        attributeFilter: ['data-expanded', 'data-node-width', 'data-node-height', 'data-state']
+      });
+    });
+
+    return () => observer.disconnect();
+  }, [storyModel, storyData]); // 添加storyData依赖，确保数据变化时重新设置监听器
 
   const renderEmotionIcon = (emotion, color) => {
     const props = { className: `text-${color} flex-shrink-0`, size: 20 };

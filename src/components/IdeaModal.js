@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useLocale } from '../contexts/LocaleContext';
 
-function IdeaModal({ onGenerate, onTestStoryboard, onTestFalai }) {
+function IdeaModal({ onGenerate, onTestStoryboard, onTestFalai, onTestExplorationNode, onTestStoryTree }) {
   const [isLoading, setIsLoading] = useState(false);
   const [idea, setIdea] = useState('');
   const locale = useLocale();
@@ -20,6 +20,18 @@ function IdeaModal({ onGenerate, onTestStoryboard, onTestFalai }) {
   const handleTestFalai = () => {
     if (onTestFalai) {
       onTestFalai();
+    }
+  };
+
+  const handleTestExplorationNode = () => {
+    if (onTestExplorationNode) {
+      onTestExplorationNode();
+    }
+  };
+
+  const handleTestStoryTree = () => {
+    if (onTestStoryTree) {
+      onTestStoryTree();
     }
   };
 
@@ -70,6 +82,22 @@ function IdeaModal({ onGenerate, onTestStoryboard, onTestFalai }) {
               onClick={handleTestFalai}
             >
               <span className="btn-text">测试FalAI</span>
+            </button>
+            
+            <button 
+              id="test-exploration-node-btn" 
+              className="bg-orange-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-all duration-200 transform hover:scale-105 flex items-center justify-center"
+              onClick={handleTestExplorationNode}
+            >
+              <span className="btn-text">测试探索节点</span>
+            </button>
+            
+            <button 
+              id="test-story-tree-btn" 
+              className="bg-teal-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-all duration-200 transform hover:scale-105 flex items-center justify-center"
+              onClick={handleTestStoryTree}
+            >
+              <span className="btn-text">分支关系测试</span>
             </button>
           </div>
         </div>

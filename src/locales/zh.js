@@ -13,7 +13,8 @@ const zh = {
   header: {
     storyScript: '故事脚本',
     userRoles: '用户角色',
-    generateMap: '生成体验地图'
+    generateMap: '生成体验地图',
+    exploreNode: '探索节点'
   },
   sidebar: {
     title: '分镜信息',
@@ -180,13 +181,13 @@ const zh = {
   },
   initialStory: [
     { id: 1, title: '分镜 1：用户进入登录页', description: '用户打开App，看到登录和注册界面。', emotion: 'neutral', color: 'blue-500', pos: { x: 100, y: 200 }, connections: [2], agentId: null },
-    { id: 2, title: '分镜 2：输入错误密码', description: '用户输入账号和密码，但密码错误，无法登录。', emotion: 'frustrated', color: 'red-500', pos: { x: 400, y: 150 }, connections: [3, 'A1'], agentId: null },
-    { id: 3, title: '分镜 3：身份验证成功', description: '用户使用"忘记密码"功能重置密码，或输入正确密码后成功登录。', emotion: 'relieved', color: 'green-500', pos: { x: 700, y: 200 }, connections: [4, 'B1'], agentId: null },
-    { id: 4, title: '分镜 4：进入主界面', description: '用户成功进入App主界面，开始使用核心功能。', emotion: 'relieved', color: 'green-500', pos: { x: 1000, y: 180 }, connections: [], agentId: null },
-    { id: 'A1', title: '分镜 A1：系统提示错误', description: '系统明确提示"密码错误"，并高亮密码输入框。', emotion: 'frustrated', color: 'red-500', pos: { x: 450, y: 350 }, connections: ['A2'], agentId: null },
-    { id: 'A2', title: '分镜 A2：用户放弃尝试', description: '用户多次尝试失败后，感到沮丧并暂时关闭了App。', emotion: 'frustrated', color: 'red-500', pos: { x: 450, y: 550 }, connections: [], agentId: null },
-    { id: 'B1', title: '分镜 B1：用户网络中断', description: '在验证成功后，页面跳转时网络突然中断。', emotion: 'frustrated', color: 'red-500', pos: { x: 750, y: 400 }, connections: ['B2'], agentId: null },
-    { id: 'B2', title: '分镜 B2：用户联系客服', description: '用户重启App无效后，决定寻找客服帮助。', emotion: 'neutral', color: 'yellow-600', pos: { x: 750, y: 600 }, connections: [], agentId: null }
+    { id: 2, title: '分镜 2：输入错误密码', description: '用户输入账号和密码，但密码错误，无法登录。', emotion: 'frustrated', color: 'red-500', pos: { x: 300, y: 200 }, connections: [3, 'A1'], agentId: null },
+    { id: 3, title: '分镜 3：身份验证成功', description: '用户使用"忘记密码"功能重置密码，或输入正确密码后成功登录。', emotion: 'relieved', color: 'green-500', pos: { x: 500, y: 200 }, connections: [4, 'B1'], agentId: null },
+    { id: 4, title: '分镜 4：进入主界面', description: '用户成功进入App主界面，开始使用核心功能。', emotion: 'relieved', color: 'green-500', pos: { x: 700, y: 200 }, connections: [], agentId: null },
+    { id: 'A1', title: '分镜 A1：系统提示错误', description: '系统明确提示"密码错误"，并高亮密码输入框。', emotion: 'frustrated', color: 'red-500', pos: { x: 300, y: 400 }, connections: ['A2'], agentId: null },
+    { id: 'A2', title: '分镜 A2：用户放弃尝试', description: '用户多次尝试失败后，感到沮丧并暂时关闭了App。', emotion: 'frustrated', color: 'red-500', pos: { x: 300, y: 600 }, connections: [], agentId: null },
+    { id: 'B1', title: '分镜 B1：用户网络中断', description: '在验证成功后，页面跳转时网络突然中断。', emotion: 'frustrated', color: 'red-500', pos: { x: 500, y: 400 }, connections: ['B2'], agentId: null },
+    { id: 'B2', title: '分镜 B2：用户联系客服', description: '用户重启App无效后，决定寻找客服帮助。', emotion: 'neutral', color: 'yellow-600', pos: { x: 500, y: 600 }, connections: [], agentId: null }
   ],
   noscript: '您需要启用JavaScript来运行此应用。'
 };

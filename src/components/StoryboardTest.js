@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 // 移除不再需要的ReactFlow组件
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  X, Image, Save, ArrowLeft, Download, Plus, Settings, Zap, AlertTriangle, User, GitFork, CheckCircle, 
+import {
+  X, Image, Save, ArrowLeft, Download, Plus, Settings, Zap, AlertTriangle, User, GitFork, CheckCircle,
   MousePointerClick, Film, Folder, PanelLeft, PanelLeftClose, Edit3, ChevronDown, CornerDownRight,
   Highlighter, Eye, Trash2, Check, Edit2, Loader2, Sparkles
 } from 'lucide-react';
 import KeywordSelector from './KeywordSelector';
 import PersonaDetail from './PersonaDetail';
-import StoryNode from './StoryNode';
+import NodeRenderer, { NODE_TYPES, getNodeType, createNode } from './NodeRenderer';
+
 // 导入Liblib API服务
 import LiblibAPI from '../services/liblib';
 // 导入FalAI API服务
@@ -18,10 +19,15 @@ import { liblibConfig } from '../config';
 import { getPublicImageUrl } from '../services/imageUtils';
 // 导入测试图像和风格图
 import testImage from '../images/test.png';
-import style1Image from '../images/style1.png'; 
-import style2Image from '../images/style2.png'; 
-import style3Image from '../images/style3.png'; 
+import style1Image from '../images/style1.png';
+import style2Image from '../images/style2.png';
+import style3Image from '../images/style3.png';
 import style4Image from '../images/style4.png';
+
+// 节点类型验证函数
+const isValidNodeType = (nodeType) => {
+  return Object.values(NODE_TYPES).includes(nodeType);
+};
 
 // 风格图的公网URL
 const styleUrls = {
@@ -38,6 +44,440 @@ const styleImages = {
   style3: style3Image,
   style4: style4Image,
 };
+
+// 全局变量用于存储 layoutTree 的参数
+let globalStoryModel = null;
+let globalSelectedFrameId = null;
+let globalGetNodeById = null;
+let globalGetBranchById = null;
+let globalUpdateNode = null;
+
+// 添加节点状态跟踪
+const nodeStatesRef = {};
+
+// 动态布局常量
+const DYNAMIC_LAYOUT_CONFIG = {
+  BASE_LEFT: 100,
+  BASE_TOP: 100,
+  HORIZONTAL_GAP: 60, // 探索节点基础间距（分镜节点间距在calculateDynamicGap中单独处理）
+  VERTICAL_GAP: 600, // 垂直间距
+  BRANCH_LINE_GAP: 300, // 分支线间距（从300缩小到200，让子分支更紧凑）
+  PANEL_WIDTH: 132, // 面板宽度
+  NODE_WIDTH: {
+    COLLAPSED: 240,
+    EXPANDED: 360
+  }
+};
+
+// 辅助函数：动态计算节点宽度 - 移到组件级别以便全局使用
+const getNodeWidth = (node) => {
+  if (!node) return DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.COLLAPSED;
+  
+  // 严格检查是否为探索节点
+  const isExplorationNode = node.type === NODE_TYPES.EXPLORATION || node.explorationData?.isExplorationNode;
+  
+  // 根据节点类型调整基础宽度
+  if (isExplorationNode) {
+    // ExplorationNode的动态宽度处理
+    if (node.showBubblesPanel) {
+      return 800; // 显示气泡面板时的宽度
+    } else {
+      return 400; // 不显示气泡面板时的宽度
+    }
+  }
+  
+  // 对于普通分镜节点，需要考虑展开状态下的面板宽度
+  const nodeState = nodeStatesRef[node.id];
+  const isExpanded = nodeState && nodeState.isExpanded;
+  
+  if (isExpanded) {
+    // 展开状态：基础宽度 + 面板宽度
+    return DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.EXPANDED + DYNAMIC_LAYOUT_CONFIG.PANEL_WIDTH;
+  } else {
+    // 折叠状态：只返回基础宽度
+    return DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.COLLAPSED;
+  }
+};
+
+// 获取节点的实际显示宽度（用于布局计算）
+const getNodeDisplayWidth = (node) => {
+  if (!node) return DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.COLLAPSED;
+  
+  // 严格检查是否为探索节点
+  const isExplorationNode = node.type === NODE_TYPES.EXPLORATION || node.explorationData?.isExplorationNode;
+  
+  // 根据节点类型调整基础宽度
+  if (isExplorationNode) {
+    // ExplorationNode的动态宽度处理
+    if (node.showBubblesPanel) {
+      return 800; // 显示气泡面板时的宽度
+    } else {
+      return 400; // 不显示气泡面板时的宽度
+    }
+  }
+  
+  // 对于普通分镜节点，需要考虑展开状态下的面板宽度
+  const nodeState = nodeStatesRef[node.id];
+  const isExpanded = nodeState && nodeState.isExpanded;
+  
+  if (isExpanded) {
+    // 展开状态：基础宽度 + 面板宽度
+    return DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.EXPANDED + DYNAMIC_LAYOUT_CONFIG.PANEL_WIDTH;
+  } else {
+    // 折叠状态：只返回基础宽度
+  return DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.COLLAPSED;
+  }
+};
+
+// 辅助函数：动态计算节点高度 - 移到组件级别以便全局使用
+const getNodeHeight = (node) => {
+  if (!node) return 200;
+  
+  // 根据节点状态和内容计算高度 - 直接检查nodeStatesRef
+  const nodeState = nodeStatesRef[node.id];
+  if (nodeState && nodeState.isExpanded) {
+    return 250; // 展开状态
+  }
+  
+  return 200; // 默认折叠状态
+};
+
+// 动态间距计算函数 - 分别处理分镜节点和探索节点
+const calculateDynamicGap = (currentNode, currentIndex, allNodes) => {
+  const { HORIZONTAL_GAP } = DYNAMIC_LAYOUT_CONFIG;
+  let gap = HORIZONTAL_GAP;
+  
+  // 检查当前节点和下一个节点的类型
+  const isCurrentExploration = currentNode.type === NODE_TYPES.EXPLORATION || currentNode.explorationData?.isExplorationNode;
+  const nextNode = allNodes[currentIndex + 1];
+  const isNextExploration = nextNode?.type === NODE_TYPES.EXPLORATION || nextNode?.explorationData?.isExplorationNode;
+  
+  // 分镜节点之间的间距 - 缩小间距并保持恒定
+  if (!isCurrentExploration && !isNextExploration) {
+    // 两个都是分镜节点，使用更小的固定间距
+    gap = 50; // 分镜节点之间的固定间距（从-100缩小到-150）
+  }
+  // 分镜节点与探索节点之间的间距 - 缩小间距并保持恒定
+  else if (!isCurrentExploration && isNextExploration) {
+    // 当前是分镜节点，下一个是探索节点
+    gap = 50; // 分镜节点到探索节点的固定间距（从100缩小到50）
+  }
+  // 探索节点与分镜节点之间的间距 - 缩小间距并保持恒定
+  else if (isCurrentExploration && !isNextExploration) {
+    // 当前是探索节点，下一个是分镜节点
+    gap = 60; // 探索节点到分镜节点的固定间距（从60缩小到30）
+  }
+  // 探索节点之间的间距 - 缩小间距并保持恒定
+  else if (isCurrentExploration && isNextExploration) {
+    // 两个都是探索节点
+    gap = 60; // 探索节点之间的固定间距（从80缩小到40）
+  }
+  
+  return gap;
+};
+
+// 递归布局算法 - 支持无限嵌套的树状结构和动态间距调整
+const layoutTree = (storyModel, selectedFrameId, getNodeById, getBranchById, updateNode) => {
+  
+
+  
+
+
+  const { BASE_LEFT, BASE_TOP, HORIZONTAL_GAP, VERTICAL_GAP, BRANCH_LINE_GAP, PANEL_WIDTH } = DYNAMIC_LAYOUT_CONFIG;
+
+  // 获取所有节点和分支
+  const allNodes = Object.values(storyModel.nodes);
+  const allBranches = Object.values(storyModel.branches);
+
+  // 递归布局函数
+  const layoutBranch = (branchId, startX, startY, level = 0) => {
+    const branch = getBranchById(branchId);
+    if (!branch) return { width: 0, height: 0 };
+
+    const branchNodes = branch.nodeIds
+      .map(nodeId => getNodeById(nodeId))
+      .filter(Boolean)
+      .sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
+
+    if (branchNodes.length === 0) return { width: 0, height: 0 };
+
+    let currentX = startX;
+    let maxHeight = 0;
+    let totalWidth = 0;
+
+    // 布局分支内的节点 - 确保所有节点在同一水平线上
+    branchNodes.forEach((node, index) => {
+      // 第一步：设置当前节点位置
+      // 如果是第一个节点，使用startX；否则使用前一个节点的位置+宽度+间距
+      if (index === 0) {
+        // 第一个节点：使用基准位置，如果节点有baseX则使用baseX，否则使用startX
+        node.pos = { x: node.baseX !== undefined ? node.baseX : startX, y: startY };
+      } else {
+        // 其他节点：基于前一个节点的位置计算
+        const prevNode = branchNodes[index - 1];
+        const prevNodeWidth = getNodeDisplayWidth(prevNode); // 使用显示宽度确保一致性
+        const dynamicGap = calculateDynamicGap(prevNode, index - 1, branchNodes);
+        node.pos = { x: prevNode.pos.x + prevNodeWidth + dynamicGap, y: startY };
+      }
+
+      // 设置连接关系 - 同一分支内的节点不连接，只连接分支间的关系
+      if (index === 0) {
+        // 第一个节点连接到父节点（如果有）
+        if (branch.originNodeId) {
+          node.connections = [branch.originNodeId];
+        } else {
+          node.connections = [];
+        }
+      } else {
+        // 同一分支内的后续节点不连接到前一个节点
+        node.connections = [];
+      }
+
+      // 检查是否是分镜节点
+      const isStoryboardNode = node.type === 'storyboard' || !node.explorationData?.isExplorationNode;
+
+      // 更新节点数据
+      updateNode(node.id, {
+        pos: node.pos,
+        connections: node.connections
+      });
+      
+
+
+      // 第二步：计算当前节点的基础宽度（不包括面板）
+      const nodeWidth = getNodeDisplayWidth(node); // 使用显示宽度，避免展开时影响布局
+      // 动态计算间距：根据节点状态调整间距
+      const dynamicGap = calculateDynamicGap(node, index, branchNodes);
+      
+      // 第三步：计算下一个节点的起始位置
+      // 关键：下一个节点的起始位置 = 当前节点的起始位置 + 当前节点的显示宽度 + 间距
+      // 这样确保节点展开时不影响后续节点的位置
+      const nextNodeStartX = node.pos.x + nodeWidth + dynamicGap;
+      
+      // 获取节点状态
+      const nodeState = nodeStatesRef[node.id];
+
+      // 第四步：更新currentX，使其成为下一个节点的起始位置
+      currentX = nextNodeStartX;
+      totalWidth = currentX - startX;
+      maxHeight = Math.max(maxHeight, getNodeHeight(node));
+    });
+
+    // 递归布局子分支
+    const childBranches = allBranches.filter(b => b.parentBranchId === branchId);
+    if (childBranches.length > 0) {
+      // 找到探索节点（分支的起源节点）
+      const explorationNode = branchNodes.find(node =>
+        node.type === NODE_TYPES.EXPLORATION || node.explorationData?.isExplorationNode
+      );
+
+      if (explorationNode) {
+        // 计算子分支的起始位置
+        const explorationNodeWidth = getNodeDisplayWidth(explorationNode); // 使用显示宽度，避免展开时影响布局
+        // 子分支应该基于探索节点的基础宽度，不包括面板宽度
+        const childStartX = explorationNode.pos.x + explorationNodeWidth + 20; // 进一步减小探索节点和子分支之间的间距 - 从40缩小到20
+        const childStartY = explorationNode.pos.y;
+
+        // 计算子分支的垂直分布 - 确保子分支节点也在同一水平线上
+        const totalChildBranches = childBranches.length;
+        childBranches.forEach((childBranch, childIndex) => {
+          const childY = childStartY + (childIndex - Math.floor(totalChildBranches / 2)) * BRANCH_LINE_GAP;
+          const childLayout = layoutBranch(childBranch.id, childStartX, childY, level + 1);
+
+          // 更新探索节点的连接关系
+          const childBranchStartNode = childBranch.nodeIds[0] ? getNodeById(childBranch.nodeIds[0]) : null;
+          if (childBranchStartNode) {
+            explorationNode.connections = [...(explorationNode.connections || []), childBranchStartNode.id];
+          }
+        });
+
+        // 更新探索节点数据
+        updateNode(explorationNode.id, {
+          connections: explorationNode.connections
+        });
+      }
+    }
+
+    return { width: totalWidth, height: maxHeight };
+  };
+
+  // 找到根分支（没有父分支的分支）
+  const rootBranches = allBranches.filter(branch => !branch.parentBranchId);
+
+  if (rootBranches.length === 0) {
+    return;
+  }
+
+  // 布局根分支
+  let currentY = BASE_TOP;
+  rootBranches.forEach((rootBranch, index) => {
+    const layout = layoutBranch(rootBranch.id, BASE_LEFT, currentY, 0);
+    currentY += layout.height + VERTICAL_GAP;
+  });
+
+
+};
+
+// 全局 layoutTree 包装函数
+const globalLayoutTree = () => {
+  if (globalStoryModel && globalSelectedFrameId !== null && globalGetNodeById && globalGetBranchById && globalUpdateNode) {
+    layoutTree(globalStoryModel, globalSelectedFrameId, globalGetNodeById, globalGetBranchById, globalUpdateNode);
+  }
+};
+
+// 节点状态管理函数
+const updateNodeState = (nodeId, state, isExpanded) => {
+
+
+  nodeStatesRef[nodeId] = {
+    state,
+    isExpanded,
+    lastUpdated: Date.now()
+  };
+  
+  // 触发动态重新布局 - 只重新布局后续节点
+  setTimeout(() => {
+    const currentNode = globalGetNodeById ? globalGetNodeById(nodeId) : null;
+    const isExplorationNode = currentNode && (currentNode.type === NODE_TYPES.EXPLORATION || currentNode.explorationData?.isExplorationNode);
+
+    // 情景探索节点尺寸变化会影响子分支起点，必须做全局递归布局
+    if (isExplorationNode) {
+      globalLayoutTree();
+      return;
+    }
+
+    if (currentNode && currentNode.branchId) {
+      const branch = globalGetBranchById ? globalGetBranchById(currentNode.branchId) : null;
+      if (branch) {
+        smartRelayout(branch, nodeId);
+        return;
+      }
+    }
+
+    // 兜底：无法定位分支时执行全局布局
+    globalLayoutTree();
+  }, 100); // 增加延迟时间，确保状态更新完成
+};
+
+// 从指定索引开始重新布局节点
+const relayoutNodesFromIndex = (branch, startIndex) => {
+  if (!globalGetNodeById || !globalUpdateNode) return;
+  
+  const uniqueIds = Array.from(new Set(branch.nodeIds));
+  const branchNodes = uniqueIds
+    .map(nodeId => globalGetNodeById(nodeId))
+    .filter(Boolean)
+    .sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
+  
+  if (startIndex >= branchNodes.length) return;
+  
+  // 从startIndex开始重新计算位置
+  for (let i = startIndex; i < branchNodes.length; i++) {
+    const node = branchNodes[i];
+    const prevNode = branchNodes[i - 1];
+    
+    // 基于前一个节点的位置计算当前位置
+    const prevNodeWidth = getNodeDisplayWidth(prevNode); // 使用显示宽度，避免展开时影响布局
+    const dynamicGap = calculateDynamicGap(prevNode, i - 1, branchNodes);
+    
+    // 关键修复：确保前一个节点有有效的位置
+    if (prevNode && prevNode.pos && typeof prevNode.pos.x === 'number') {
+      const newX = prevNode.pos.x + prevNodeWidth + dynamicGap;
+      
+      // 检查是否是分镜节点
+      const isStoryboardNode = node.type === 'storyboard' || !node.explorationData?.isExplorationNode;
+      
+      // 更新节点位置，但保持Y坐标不变
+      globalUpdateNode(node.id, {
+        pos: { x: newX, y: node.pos.y }
+      });
+      
+
+    } else {
+      // 如果前一个节点位置无效，使用基准位置
+      const baseX = node.baseX !== undefined ? node.baseX : (i * 220); // 默认间距
+      globalUpdateNode(node.id, {
+        pos: { x: baseX, y: node.pos.y }
+      });
+    }
+  }
+};
+
+// 智能重新布局函数 - 保持节点左侧位置不变
+const smartRelayout = (branch, changedNodeId) => {
+  if (!globalGetNodeById || !globalUpdateNode) return;
+  
+  const uniqueIds = Array.from(new Set(branch.nodeIds));
+  const branchNodes = uniqueIds
+    .map(nodeId => globalGetNodeById(nodeId))
+    .filter(Boolean)
+    .sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
+  
+  const changedNodeIndex = branchNodes.findIndex(node => node.id === changedNodeId);
+  if (changedNodeIndex === -1) return;
+  
+  // 只重新布局变更节点之后的节点
+  for (let i = changedNodeIndex + 1; i < branchNodes.length; i++) {
+    const node = branchNodes[i];
+    const prevNode = branchNodes[i - 1];
+    
+    if (prevNode && prevNode.pos && typeof prevNode.pos.x === 'number') {
+      const prevNodeWidth = getNodeDisplayWidth(prevNode); // 使用显示宽度，避免展开时影响布局
+      const dynamicGap = calculateDynamicGap(prevNode, i - 1, branchNodes);
+      const newX = prevNode.pos.x + prevNodeWidth + dynamicGap;
+      
+      // 检查是否是分镜节点
+      const isStoryboardNode = node.type === 'storyboard' || !node.explorationData?.isExplorationNode;
+      
+      // 只有当位置真正需要改变时才更新
+      if (Math.abs(node.pos.x - newX) > 1) {
+        const oldX = node.pos.x;
+        globalUpdateNode(node.id, {
+          pos: { x: newX, y: node.pos.y }
+        });
+        
+
+      }
+    }
+  }
+};
+
+// 初始化节点状态函数
+const initializeNodeState = (nodeId) => {
+  if (!nodeStatesRef[nodeId]) {
+    nodeStatesRef[nodeId] = {
+      state: 'collapsed',
+      isExpanded: false,
+      lastUpdated: Date.now()
+    };
+  }
+  return nodeStatesRef[nodeId];
+};
+
+// 设置节点的基准位置
+const setNodeBaseX = (nodeId, baseX) => {
+  if (globalUpdateNode) {
+    globalUpdateNode(nodeId, { baseX });
+  }
+};
+
+// 动态重新布局函数
+const triggerDynamicRelayout = () => {
+  setTimeout(() => {
+    globalLayoutTree();
+  }, 100);
+};
+
+  // 设置全局 layoutTree 参数的函数
+  const setLayoutTreeParams = (storyModel, selectedFrameId, getNodeById, getBranchById, updateNode) => {
+    globalStoryModel = storyModel;
+    globalSelectedFrameId = selectedFrameId;
+    globalGetNodeById = getNodeById;
+    globalGetBranchById = getBranchById;
+    globalUpdateNode = updateNode;
+  };
+
+
 
 // 中间页面组件 - 参考RefinementPage设计
 function StoryboardPreparationPage({ initialStoryText, onComplete }) {
@@ -80,7 +520,7 @@ function StoryboardPreparationPage({ initialStoryText, onComplete }) {
         <div className="bg-white rounded-2xl shadow-lg p-8">
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-gray-900 mb-2">故事板配置</h1>
           <p className="text-lg text-gray-600 mb-8">配置您的故事板画布设置和风格偏好</p>
-          
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* 故事脚本配置 */}
             <div className="bg-gray-50 rounded-xl p-6 border">
@@ -94,7 +534,7 @@ function StoryboardPreparationPage({ initialStoryText, onComplete }) {
                 onChange={(e) => setStoryScript(e.target.value)}
                 placeholder="请输入您的故事脚本或描述..."
               />
-              
+
               <div className="mt-4 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">分镜数量</label>
@@ -116,24 +556,23 @@ function StoryboardPreparationPage({ initialStoryText, onComplete }) {
                 <Image className="mr-3 text-green-500" />
                 视觉风格
               </h2>
-              
+
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-3">选择参考风格</label>
                   <div className="grid grid-cols-2 gap-3">
                     {styles.map(style => (
-                      <div 
+                      <div
                         key={style.id}
-                        className={`cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
-                          selectedStyle === style.id 
-                            ? 'border-blue-500 ring-2 ring-blue-200' 
+                        className={`cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${selectedStyle === style.id
+                            ? 'border-blue-500 ring-2 ring-blue-200'
                             : 'border-gray-200 hover:border-gray-300'
-                        }`}
+                          }`}
                         onClick={() => setSelectedStyle(style.id)}
                       >
                         <div className="aspect-video relative">
-                          <img 
-                            src={styleImages[style.id]} 
+                          <img
+                            src={styleImages[style.id]}
                             alt={style.label}
                             className="w-full h-full object-cover"
                             onError={(e) => {
@@ -156,7 +595,7 @@ function StoryboardPreparationPage({ initialStoryText, onComplete }) {
                     ))}
                   </div>
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-3">画布设置</label>
                   <div className="space-y-3">
@@ -165,7 +604,7 @@ function StoryboardPreparationPage({ initialStoryText, onComplete }) {
                         type="checkbox"
                         id="enableConnections"
                         checked={settings.enableConnections}
-                        onChange={(e) => setSettings(prev => ({...prev, enableConnections: e.target.checked}))}
+                        onChange={(e) => setSettings(prev => ({ ...prev, enableConnections: e.target.checked }))}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                       <label htmlFor="enableConnections" className="ml-2 text-sm text-gray-600">启用分镜连线</label>
@@ -175,7 +614,7 @@ function StoryboardPreparationPage({ initialStoryText, onComplete }) {
                         type="checkbox"
                         id="enableBranching"
                         checked={settings.enableBranching}
-                        onChange={(e) => setSettings(prev => ({...prev, enableBranching: e.target.checked}))}
+                        onChange={(e) => setSettings(prev => ({ ...prev, enableBranching: e.target.checked }))}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                       <label htmlFor="enableBranching" className="ml-2 text-sm text-gray-600">启用分支功能</label>
@@ -185,7 +624,7 @@ function StoryboardPreparationPage({ initialStoryText, onComplete }) {
               </div>
             </div>
           </div>
-          
+
           <div className="mt-8 flex justify-between">
             <button
               className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
@@ -194,7 +633,7 @@ function StoryboardPreparationPage({ initialStoryText, onComplete }) {
             </button>
             <button
               onClick={handleStartCanvas}
-                              className="px-8 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center"
+              className="px-8 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center"
             >
               <span>开始创建画布</span>
               <ArrowLeft className="ml-2 h-4 w-4 rotate-180" />
@@ -206,332 +645,200 @@ function StoryboardPreparationPage({ initialStoryText, onComplete }) {
   );
 }
 
-// 左侧边栏组件 - 参考StoryTree设计
-function StoryboardTree({ storyData, selectedFrameId, onFrameSelect }) {
+// 左侧边栏组件 - 重构为支持分支结构
+function StoryboardTree({ storyModel, selectedFrameId, onFrameSelect }) {
   const renderStoryTree = () => {
-    const nodesById = new Map(storyData.map(node => [node.id, node]));
-    const childrenOf = new Map();
-    
-    // 建立连接关系
-    storyData.forEach(node => {
-      if (node.connections) {
-        node.connections.forEach(childId => {
-          if (!childrenOf.has(childId)) childrenOf.set(childId, []);
-          childrenOf.get(childId).push(node.id);
-        });
-      }
-    });
-    
-    // 找到根节点
-    const rootId = storyData.find(node => !childrenOf.has(node.id))?.id || (storyData.length > 0 ? storyData[0].id : null);
-    
-    return rootId ? renderPath(rootId, nodesById, childrenOf) : null;
-  };
-  
-  const renderPath = (nodeId, nodesById, childrenOf) => {
-    const visited = new Set();
-    const mainPath = [];
-    let branchCounter = 0;
-    
-    let currentNodeId = nodeId;
-    
-    while (currentNodeId && !visited.has(currentNodeId)) {
-      const currentNode = nodesById.get(currentNodeId);
-      if (!currentNode) break;
-      
-      visited.add(currentNodeId);
-      mainPath.push(currentNode);
-      
-      if (currentNode.connections && currentNode.connections.length > 0) {
-        currentNodeId = currentNode.connections[0];
-      } else {
-        currentNodeId = null;
-      }
+    if (!storyModel || !storyModel.branches || !storyModel.nodes) {
+      return null;
     }
+
+    // 找到根分支（没有父分支的分支）
+    const rootBranches = Object.values(storyModel.branches).filter(branch => !branch.parentBranchId);
     
+    if (rootBranches.length === 0) {
     return (
-      <ul className="space-y-1">
-        <li className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-          <Folder className="w-4 h-4 text-gray-500 flex-shrink-0" />
-          <span className="truncate">主要故事线</span>
-        </li>
-        {mainPath.map((node, index) => {
-          const hasBranches = node.connections && node.connections.length > 1;
-          
-          return (
-            <li key={node.id} className={`story-tree-node ${hasBranches ? 'has-branches' : ''} is-main`}>
-              <div 
-                className={`node-content w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer transition-colors ${node.id === selectedFrameId ? 'bg-blue-100 border border-blue-500' : ''}`}
-                onClick={() => onFrameSelect(node.id)}
-              >
-                <Film className="w-4 h-4 flex-shrink-0 text-gray-500" />
-                <span className="flex-grow text-sm text-gray-800 truncate min-w-0">{node.label || `分镜 ${index + 1}`}</span>
-                <span className="flex-shrink-0 text-xs">📽️</span>
+        <div className="text-center py-4 text-gray-500">
+          <span className="text-xs">暂无故事结构</span>
               </div>
-              
-              {hasBranches && (
-                <ul className="branch-container pl-4 mt-1">
-                  {node.connections.slice(1).map((branchId, idx) => {
-                    branchCounter++;
-                    const branchName = `分支 ${String.fromCharCode(64 + branchCounter)}`;
-                    
+      );
+    }
+
                     return (
-                      <BranchNode 
-                        key={branchId} 
-                        branchId={branchId}
-                        branchName={branchName} 
-                        nodesById={nodesById}
+      <div className="space-y-4">
+        {rootBranches.map((rootBranch, index) => (
+          <BranchTimeline
+            key={rootBranch.id}
+            branch={rootBranch}
+            storyModel={storyModel}
                         selectedFrameId={selectedFrameId}
                         onFrameSelect={onFrameSelect}
+            branchIndex={index}
                       />
-                    );
-                  })}
-                </ul>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+        ))}
+      </div>
     );
   };
 
   return renderStoryTree();
 }
 
-// 分支节点组件
-function BranchNode({ branchId, branchName, nodesById, selectedFrameId, onFrameSelect }) {
+function BranchTimeline({ branch, storyModel, selectedFrameId, onFrameSelect, branchIndex }) {
   const [isExpanded, setIsExpanded] = useState(true);
-  
+
   const toggleExpand = (e) => {
     e.stopPropagation();
-    setIsExpanded(!isExpanded);
+    setIsExpanded(prev => !prev);
   };
-  
-  const renderBranchNodes = (nodeId) => {
-    const node = nodesById.get(nodeId);
-    if (!node) return null;
-    
+
+  const getBranchName = useCallback(() => {
+    if (branch.name) return branch.name;
+    if (branch.level === 0) {
+      return '主线';
+    }
+    const siblings = Object.values(storyModel.branches).filter(b => b.parentBranchId === branch.parentBranchId);
+    const siblingIndex = siblings.findIndex(b => b.id === branch.id);
+    return `分支 ${String.fromCharCode(65 + (siblingIndex >= 0 ? siblingIndex : branchIndex || 0))}`;
+  }, [branch, storyModel.branches, branchIndex]);
+
+  // 仅显示本分支的节点列表（纵向，一行一个）
+  const uniqueNodeIds = Array.from(new Set(branch.nodeIds));
+  const branchNodes = uniqueNodeIds
+    .map(nodeId => storyModel.nodes[nodeId])
+    .filter(Boolean)
+    .sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
+
+    const renderNodeRow = (node, indexInBranch) => {
+    const isExploration = node.type === NODE_TYPES.EXPLORATION || node.explorationData?.isExplorationNode;
+    const isSelected = selectedFrameId === node.id;
+    const icon = isExploration ? '🔍' : '📽️';
+    const label = node.label || (isExploration ? '情景探索' : `分镜 ${(node.nodeIndex || 0) + 1}`);
     return (
-      <li key={node.id} className="story-tree-node is-branch">
-        <div 
-          className={`node-content w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer transition-colors ${node.id === selectedFrameId ? 'bg-blue-100 border border-blue-500' : ''}`}
+      <div key={node.id} className="node-item">
+        <div
+          className={`node-content w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer transition-colors ${isSelected ? 'bg-blue-100 border border-blue-500' : ''}`}
           onClick={() => onFrameSelect(node.id)}
         >
-          <Film className="w-4 h-4 flex-shrink-0 text-gray-500" />
-          <span className="flex-grow text-sm text-gray-800 truncate min-w-0">{node.label || '分镜'}</span>
-          <span className="flex-shrink-0 text-xs">📽️</span>
+          <div className="w-4 h-4 flex-shrink-0">
+            <span className="text-xs align-middle">{icon}</span>
         </div>
-        
-        {node.connections && node.connections.length > 0 && (
-          <ul className="pl-4 mt-1">
-            {node.connections.map(childId => renderBranchNodes(childId))}
-          </ul>
-        )}
-      </li>
+          <span className="flex-grow text-sm text-gray-800 truncate min-w-0">{label}</span>
+            </div>
+        </div>
     );
   };
-  
+
+  // 查找挂载在某个探索节点下的子分支（只在分歧处显示分支）
+  const getChildBranchesForOrigin = (originNodeId) => {
+    return Object.values(storyModel.branches).filter(b => b.parentBranchId === branch.id && b.originNodeId === originNodeId);
+  };
+
   return (
-    <li>
-      <div 
-        className="branch-header flex items-center gap-2 p-2 cursor-pointer text-sm font-medium text-yellow-700 bg-yellow-50/80 rounded-md my-1 transition-colors hover:bg-yellow-100/80"
+    <div className="branch-tree">
+      <div
+        className={`branch-header flex items-center justify-between p-2 cursor-pointer text-sm font-medium rounded-md transition-colors ${branch.level === 0 
+          ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+          : 'bg-yellow-50 text-yellow-700 border border-yellow-200'}`}
         onClick={toggleExpand}
       >
-        <CornerDownRight className="w-4 h-4 flex-shrink-0" />
-        <span className="flex-grow truncate min-w-0">{branchName}</span>
-        <ChevronDown className={`w-4 h-4 expand-icon transition-transform flex-shrink-0 ${!isExpanded ? 'rotate-180' : ''}`} />
+        <div className="flex items-center gap-2">
+          <div className={`w-4 h-4 flex-shrink-0 ${branch.level === 0 ? 'text-blue-500' : 'text-yellow-500'}`}>
+            {branch.level === 0 ? <Folder className="w-4 h-4" /> : <CornerDownRight className="w-4 h-4" />}
+                      </div>
+          <span className="font-semibold">{getBranchName()}</span>
+                  </div>
+        <ChevronDown className={`w-4 h-4 transition-transform ${!isExpanded ? 'rotate-180' : ''}`} />
       </div>
-      
-      <ul className={`branch-content pl-4 border-l-2 border-yellow-200 ${isExpanded ? '' : 'hidden'}`}>
-        {renderBranchNodes(branchId)}
-      </ul>
-    </li>
+
+      {isExpanded && (
+        <div className="pl-3 pt-2">
+          {/* 本分支纵向节点列表 */}
+          <div className="space-y-1">
+            {branchNodes.map((node, idx) => (
+              <div key={node.id}>
+                {renderNodeRow(node, idx)}
+                {/* 若为情景探索节点，则在此节点下显示其子分支（只显示差异部分） */}
+                {(node.type === NODE_TYPES.EXPLORATION || node.explorationData?.isExplorationNode) && (
+                  (() => {
+                    const childBranches = getChildBranchesForOrigin(node.id);
+                    if (childBranches.length === 0) return null;
+                    // 按与该探索节点相关的顺序展示分支
+                    return (
+                      <div className="mt-1 pl-4 border-l-2 border-purple-200 space-y-2">
+                        {childBranches.map((childBranch, childIdx) => (
+                          <BranchTimeline
+                        key={childBranch.id}
+                        branch={childBranch}
+                        storyModel={storyModel}
+                        selectedFrameId={selectedFrameId}
+                        onFrameSelect={onFrameSelect}
+                            branchIndex={childIdx}
+                      />
+                    ))}
+                  </div>
+                    );
+                  })()
+                )}
+              </div>
+            ))}
+        </div>
+      </div>
+      )}
+    </div>
   );
 }
 
 // 故事板画布组件 - 参考Canvas设计，带连线功能
-function StoryboardCanvas({ storyData, selectedFrameId, onFrameSelect, onMoveNode, onDeleteNode, onTextSave, onPromptSave, onNodeStateChange }) {
+function StoryboardCanvas({
+  storyData,
+  storyModel,
+  selectedFrameId,
+  onFrameSelect,
+  onMoveNode,
+  onDeleteNode,
+  onTextSave,
+  onPromptSave,
+  onNodeStateChange,
+  onAddNode,
+  onExploreScene,
+  onGenerateImage,
+  onDeleteFrame,
+  onGenerateBranches,
+  onMergeBranches,
+  setCurrentExplorationNodeId,
+  setIsSceneExplorationOpen,
+  // 添加工具函数作为props
+  getNodeById,
+  getBranchById,
+  addNode,
+  addNodeToBranch,
+  updateNode
+}) {
   const canvasWorldRef = useRef(null);
   const canvasContainerRef = useRef(null);
   const isPanningRef = useRef(false);
   const startPosRef = useRef({ x: 0, y: 0 });
   const worldPosRef = useRef({ x: 0, y: 0 });
   const lastWorldPosRef = useRef({ x: 0, y: 0 });
+  const scaleRef = useRef(1);
+  const hasFocusedRef = useRef(false); // 添加聚焦标志位
 
-  useEffect(() => {
-    renderConnections();
-    const cleanup = initCanvasControls();
-    return cleanup;
-  }, [storyData, selectedFrameId]);
 
-  // 聚焦到第一个分镜节点
-  useEffect(() => {
-    if (storyData.length > 0) {
-      // 确保有选中的分镜
-      if (!selectedFrameId) {
-        onFrameSelect(storyData[0].id);
-      }
-      
-      // 聚焦到第一个节点位置 - 延迟更长时间确保reflowNodesEvenly执行完毕
-      setTimeout(() => {
-        const firstNode = storyData[0];
-        if (firstNode && canvasWorldRef.current && canvasContainerRef.current) {
-          const container = canvasContainerRef.current;
-          const world = canvasWorldRef.current;
-          
-          // 获取容器的实际尺寸
-          const containerRect = container.getBoundingClientRect();
-          const containerCenterX = containerRect.width / 2;
-          const containerCenterY = containerRect.height / 2;
-          
-          // 计算节点中心位置（考虑当前的世界变换）
-          const nodeCenterX = firstNode.pos.x + 180; // 假设节点宽度为360
-          const nodeCenterY = firstNode.pos.y + 100; // 假设节点高度为200
-          
-          // 计算需要移动的距离，使节点居中
-          const moveX = containerCenterX - nodeCenterX;
-          const moveY = containerCenterY - nodeCenterY;
-          
-          // 应用变换，使用平滑动画
-          world.style.transition = 'transform 0.5s ease-out';
-          world.style.transform = `translate(${moveX}px, ${moveY}px)`;
-          worldPosRef.current = { x: moveX, y: moveY };
-          lastWorldPosRef.current = { x: moveX, y: moveY };
-          
-          // 移除过渡动画
-          setTimeout(() => {
-            world.style.transition = '';
-          }, 500);
-        }
-      }, 300); // 增加延迟时间，确保reflowNodesEvenly执行完毕
-    }
-  }, [storyData, selectedFrameId, onFrameSelect]);
 
-  // 监听节点状态变化，重新渲染连接线
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      renderConnections();
-    }, 200); // 增加延迟时间，确保DOM完全更新
-    
-    return () => clearTimeout(timer);
-  }, [storyData]);
-
-  // 添加额外的监听器，确保节点状态变化时重新渲染
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setTimeout(() => {
-        renderConnections();
-      }, 100);
-    });
-
-    // 监听所有节点元素的变化
-    const nodeElements = document.querySelectorAll('[data-node-id]');
-    nodeElements.forEach(element => {
-      observer.observe(element, {
-        attributes: true,
-        attributeFilter: ['data-expanded', 'data-node-width', 'data-node-height']
-      });
-    });
-
-    return () => observer.disconnect();
-  }, [storyData]);
-
-  // 监听窗口大小变化，重新渲染连接线
-  useEffect(() => {
-    const handleResize = () => {
-      setTimeout(() => {
-        renderConnections();
-      }, 100);
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  const renderConnections = () => {
-    const svg = document.getElementById('storyboard-connections');
-    if (!svg) return;
-    
-    // 清除现有的连接线，保留defs
-    const existingDefs = svg.querySelector('defs');
-    const existingPaths = svg.querySelectorAll('path');
-    existingPaths.forEach(path => path.remove());
-    
-    if (!existingDefs) {
-      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-      defs.innerHTML = `
-        <marker id="storyboard-arrowhead" viewBox="0 0 10 10" refX="8" refY="5"
-            markerWidth="8" markerHeight="8"
-            orient="auto-start-reverse">
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="#cbd5e1"></path>
-        </marker>
-      `;
-      svg.appendChild(defs);
-    }
-
-    storyData.forEach(fromFrameData => {
-      if (fromFrameData.connections && fromFrameData.connections.length > 0) {
-        fromFrameData.connections.forEach(toId => {
-          const toFrameData = storyData.find(f => f.id === toId);
-          if (toFrameData) {
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            
-            // 动态计算连接点位置 - 连接到节点侧边中心
-            const getNodeDimensions = (frameData) => {
-              const nodeElement = document.querySelector(`[data-node-id="${frameData.id}"]`);
-              if (nodeElement) {
-                const nodeWidth = nodeElement.getAttribute('data-node-width');
-                const nodeHeight = nodeElement.getAttribute('data-node-height');
-                if (nodeWidth && nodeHeight) {
-                  return { width: parseInt(nodeWidth), height: parseInt(nodeHeight) };
-                }
-                const isExpanded = nodeElement.getAttribute('data-expanded') === 'true';
-                return {
-                  width: isExpanded ? 360 : 240,
-                  height: isExpanded ? 250 : 100
-                };
-              }
-              return { width: 360, height: 250 };
-            };
-
-            const fromDimensions = getNodeDimensions(fromFrameData);
-            const toDimensions = getNodeDimensions(toFrameData);
-            
-            // 连接点位置：从节点右侧中心到左侧中心
-            const fromX = fromFrameData.pos.x + fromDimensions.width;
-            const fromY = fromFrameData.pos.y + fromDimensions.height / 2;
-            const toX = toFrameData.pos.x;
-            const toY = toFrameData.pos.y + toDimensions.height / 2;
-            
-            // 计算贝塞尔曲线控制点
-            const distance = Math.abs(toX - fromX);
-            const controlX1 = fromX + distance * 0.5;
-            const controlY1 = fromY;
-            const controlX2 = toX - distance * 0.5;
-            const controlY2 = toY;
-
-            line.setAttribute('d', `M ${fromX} ${fromY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${toX} ${toY}`);
-            line.setAttribute('stroke', '#cbd5e1'); // slate-300
-            line.setAttribute('stroke-width', '2');
-            line.setAttribute('stroke-linecap', 'round');
-            line.setAttribute('stroke-dasharray', '6 4');
-            line.setAttribute('fill', 'none');
-            line.setAttribute('marker-end', 'url(#storyboard-arrowhead)');
-            line.setAttribute('opacity', '0.9');
-            
-            svg.appendChild(line);
-          }
-        });
-      }
-    });
-  };
-
-  const initCanvasControls = () => {
+  const initCanvasControls = useCallback(() => {
     const canvasContainer = canvasContainerRef.current;
-    if (!canvasContainer) return () => {};
-    
+    if (!canvasContainer) return () => { };
+
     const handleMouseDown = (e) => {
-      if (e.target.closest('.story-frame')) return;
+      // 如果点击的是节点或其子元素，不进行拖拽
+      if (e.target.closest('.story-frame') || e.target.closest('.exploration-panel')) {
+        return;
+      }
+
+      // 如果点击的是按钮或其他交互元素，不进行拖拽
+      if (e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea')) {
+        return;
+      }
+
       isPanningRef.current = true;
       canvasContainer.classList.add('grabbing');
       startPosRef.current = { x: e.clientX, y: e.clientY };
@@ -545,9 +852,10 @@ function StoryboardCanvas({ storyData, selectedFrameId, onFrameSelect, onMoveNod
       const dy = e.clientY - startPosRef.current.y;
       worldPosRef.current.x = lastWorldPosRef.current.x + dx;
       worldPosRef.current.y = lastWorldPosRef.current.y + dy;
-      
+
       if (canvasWorldRef.current) {
-        canvasWorldRef.current.style.transform = `translate(${worldPosRef.current.x}px, ${worldPosRef.current.y}px)`;
+        const transform = `translate(${worldPosRef.current.x}px, ${worldPosRef.current.y}px) scale(${scaleRef.current})`;
+        canvasWorldRef.current.style.transform = transform;
       }
     };
 
@@ -557,54 +865,371 @@ function StoryboardCanvas({ storyData, selectedFrameId, onFrameSelect, onMoveNod
       canvasContainer.classList.remove('grabbing');
     };
 
+    // 添加鼠标滚轮缩放功能
+    const handleWheel = (e) => {
+      e.preventDefault();
+
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newScale = Math.max(0.1, Math.min(3, scaleRef.current * delta));
+
+      if (newScale !== scaleRef.current) {
+        scaleRef.current = newScale;
+
+        if (canvasWorldRef.current) {
+          const transform = `translate(${worldPosRef.current.x}px, ${worldPosRef.current.y}px) scale(${newScale})`;
+          canvasWorldRef.current.style.transform = transform;
+        }
+      }
+    };
+
     canvasContainer.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+    canvasContainer.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => {
       canvasContainer.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      canvasContainer.removeEventListener('wheel', handleWheel);
     };
+  }, []);
+
+  const renderConnections = useCallback(() => {
+    const svg = document.getElementById('canvas-connections');
+    if (!svg || !storyModel) return;
+
+    // 清除现有的连接线和圆点，保留defs
+    const existingDefs = svg.querySelector('defs');
+    const existingPaths = svg.querySelectorAll('path');
+    const existingCircles = svg.querySelectorAll('circle');
+    existingPaths.forEach(path => path.remove());
+    existingCircles.forEach(circle => circle.remove());
+
+    if (!existingDefs) {
+      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      defs.innerHTML = `
+        <marker id="arrowhead" viewBox="0 0 12 8" refX="10" refY="4"
+            markerWidth="8" markerHeight="6"
+            orient="auto-start-reverse">
+          <path d="M 0 0 L 12 4 L 0 8 z" fill="#6b7280"></path>
+        </marker>
+      `;
+      svg.appendChild(defs);
+    }
+
+    // 第一步：绘制分支内部的连线 - 移除同一分支内的连接线
+    // 同一分支内的节点不再显示连接线，保持动态间距即可
+
+    // 第二步：绘制分支点的连线（从起源节点到分支第一个节点）
+    Object.values(storyModel.branches).forEach(branch => {
+      if (branch.originNodeId && branch.nodeIds.length > 0) {
+        const originNode = storyModel.nodes[branch.originNodeId];
+        const firstBranchNode = storyModel.nodes[branch.nodeIds[0]];
+
+        if (originNode && firstBranchNode) {
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+          // 动态计算节点宽度和高度
+          const originWidth = getNodeDisplayWidth(originNode); // 使用显示宽度确保一致性
+          const firstBranchWidth = getNodeDisplayWidth(firstBranchNode); // 使用显示宽度确保一致性
+          const originHeight = getNodeHeight(originNode);
+          const firstBranchHeight = getNodeHeight(firstBranchNode);
+
+          // 动态计算连接点位置：始终从起源节点右侧中心到分支节点左侧中心
+          // 注意：连接线应该基于节点的显示宽度，包括面板宽度
+          const fromX = originNode.pos.x + originWidth; // 使用显示宽度，包括面板
+          const fromY = originNode.pos.y + originHeight / 2;
+          const toX = firstBranchNode.pos.x;
+          const toY = firstBranchNode.pos.y + firstBranchHeight / 2;
+
+          // 创建曲线连接
+          const distance = Math.abs(toX - fromX);
+          const controlX1 = fromX + distance * 0.3;
+          const controlY1 = fromY;
+          const controlX2 = toX - distance * 0.3;
+          const controlY2 = toY;
+
+          line.setAttribute('d', `M ${fromX} ${fromY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${toX} ${toY}`);
+          line.setAttribute('stroke', '#6b7280'); // 使用更深的灰色
+          line.setAttribute('stroke-width', '2'); // 稍微加粗
+          line.setAttribute('stroke-dasharray', '5,5'); // 虚线表示分支
+          line.setAttribute('fill', 'none');
+          line.setAttribute('marker-end', 'url(#arrowhead)');
+
+          svg.appendChild(line);
+
+          // 添加连接点圆点
+          const fromCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          fromCircle.setAttribute('cx', fromX);
+          fromCircle.setAttribute('cy', fromY);
+          fromCircle.setAttribute('r', '2');
+          fromCircle.setAttribute('fill', '#6b7280');
+          fromCircle.setAttribute('stroke', '#ffffff');
+          fromCircle.setAttribute('stroke-width', '1');
+          svg.appendChild(fromCircle);
+
+          const toCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          toCircle.setAttribute('cx', toX);
+          toCircle.setAttribute('cy', toY);
+          toCircle.setAttribute('r', '2');
+          toCircle.setAttribute('fill', '#6b7280');
+          toCircle.setAttribute('stroke', '#ffffff');
+          toCircle.setAttribute('stroke-width', '1');
+          svg.appendChild(toCircle);
+        }
+      }
+    });
+  }, [storyModel]);
+
+  useEffect(() => {
+    console.log('🔧 Layout useEffect triggered:', {
+      storyModelNodes: storyModel?.nodes?.length,
+      selectedFrameId,
+      renderConnections: typeof renderConnections,
+      initCanvasControls: typeof initCanvasControls
+    });
+    
+    const cleanup = initCanvasControls();
+    return cleanup;
+  }, []);
+
+  // 统一的聚焦逻辑 - 确保进入画布时聚焦到第一个分镜节点
+  useEffect(() => {
+    // 检查是否需要重置聚焦标志
+    if (window.resetCanvasFocus) {
+      hasFocusedRef.current = false;
+      window.resetCanvasFocus = false;
+    }
+
+    // 如果是初始分镜（只有一个分镜且标记为初始分镜），不进行聚焦移动
+    if (storyData.length === 1 && storyData[0]?.isInitialFrame) {
+      return;
+    }
+
+    if (storyData.length > 0 && !hasFocusedRef.current) {
+      // 确保有第一个分镜时自动选择
+      if (!selectedFrameId) {
+        onFrameSelect(storyData[0].id);
+      }
+      hasFocusedRef.current = true; // 设置聚焦标志
+
+      // 聚焦到第一个节点位置 - 延迟更长时间确保layoutTree执行完毕
+      setTimeout(() => {
+        const firstNode = storyData[0];
+        if (firstNode && canvasWorldRef.current && canvasContainerRef.current) {
+          const container = canvasContainerRef.current;
+          const world = canvasWorldRef.current;
+
+          // 获取容器的实际尺寸
+          const containerRect = container.getBoundingClientRect();
+          const containerCenterX = containerRect.width / 2;
+          const containerCenterY = containerRect.height / 2;
+
+          // 计算节点中心位置（考虑当前的世界变换）
+          const nodeWidth = getNodeDisplayWidth(firstNode); // 使用显示宽度，已经包含了面板宽度
+          const nodeHeight = getNodeHeight(firstNode);
+          
+          // 节点宽度已经包含了面板宽度，无需额外计算
+          const totalNodeWidth = nodeWidth;
+          
+          const nodeCenterX = firstNode.pos.x + (totalNodeWidth / 2);
+          const nodeCenterY = firstNode.pos.y + (nodeHeight / 2);
+
+          // 计算需要移动的距离，使节点居中
+          const moveX = containerCenterX - nodeCenterX;
+          const moveY = containerCenterY - nodeCenterY;
+
+          // 应用变换，使用平滑动画
+          world.style.transition = 'transform 0.5s ease-out';
+          const transform = `translate(${moveX}px, ${moveY}px) scale(${scaleRef.current})`;
+          world.style.transform = transform;
+          worldPosRef.current = { x: moveX, y: moveY };
+          lastWorldPosRef.current = { x: moveX, y: moveY };
+
+          // 移除过渡动画
+          setTimeout(() => {
+            world.style.transition = '';
+          }, 500);
+        }
+      }, 1500); // 增加延迟时间到1500ms，确保所有组件渲染完成
+    }
+  }, [storyData.length, selectedFrameId, onFrameSelect, storyData]); // 添加必要的依赖项
+
+  // 当故事数据重置时，重置聚焦标志
+  useEffect(() => {
+    if (storyData.length === 0) {
+      hasFocusedRef.current = false;
+    }
+  }, [storyData.length]);
+
+  // 监听节点状态变化，重新渲染连接线
+  useEffect(() => {
+    console.log('🔧 Render connections useEffect triggered:', {
+      storyModelNodes: storyModel?.nodes?.length,
+      selectedFrameId
+    });
+    
+    const timer = setTimeout(() => {
+      renderConnections();
+    }, 200); // 增加延迟时间，确保DOM完全更新
+
+    return () => clearTimeout(timer);
+  }, [storyModel?.nodes, storyModel?.branches, selectedFrameId]); // 移除renderConnections依赖，避免循环
+
+  // 添加额外的监听器，确保节点状态变化时重新渲染
+  useEffect(() => {
+    console.log('🔧 Mutation observer useEffect triggered:', {
+      storyModelNodes: storyModel?.nodes?.length
+    });
+    
+    const observer = new MutationObserver(() => {
+      setTimeout(() => {
+        renderConnections();
+      }, 100);
+    });
+
+    // 监听所有节点元素的变化
+    const nodeElements = document.querySelectorAll('[data-node-id]');
+    nodeElements.forEach(element => {
+      observer.observe(element, {
+        attributes: true,
+        attributeFilter: ['data-expanded', 'data-node-width', 'data-node-height', 'data-state']
+      });
+    });
+
+    return () => observer.disconnect();
+  }, [storyModel?.nodes, storyModel?.branches]); // 移除renderConnections依赖，避免循环
+
+  // 监听窗口大小变化，重新渲染连接线
+  useEffect(() => {
+    console.log('🔧 Window resize useEffect triggered');
+    
+    const handleResize = () => {
+      setTimeout(() => {
+        renderConnections();
+      }, 100);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []); // 移除renderConnections依赖，避免循环
+
+  // 悬浮按钮事件处理函数 - 使用新的树状数据结构
+  const handleAddFrame = (nodeId) => {
+    // 获取目标节点
+    const targetNode = getNodeById(nodeId);
+    if (!targetNode) {
+      return;
+    }
+
+    // 获取目标节点所在的分支
+    const targetBranchId = targetNode.branchId;
+    const targetBranch = getBranchById(targetBranchId);
+    if (!targetBranch) {
+      return;
+    }
+
+    // 计算新节点的基准位置
+    const targetNodeWidth = getNodeDisplayWidth(targetNode); // 使用显示宽度确保一致性
+    const dynamicGap = calculateDynamicGap(targetNode, targetBranch.nodeIds.indexOf(nodeId), targetBranch.nodeIds.map(id => getNodeById(id)).filter(Boolean));
+    const newBaseX = targetNode.pos.x + targetNodeWidth + dynamicGap;
+
+    // 使用节点工厂函数创建新分镜
+    const newNode = createNode(NODE_TYPES.STORY_FRAME, {
+      branchId: targetBranchId,
+      nodeIndex: targetBranch.nodeIds.length,
+      label: `分镜 ${targetBranch.nodeIds.length + 1}`,
+      styleName: targetNode.styleName || 'style1',
+      connections: [targetNode.id],
+      baseX: newBaseX, // 设置基准位置
+      ...(targetBranch.level > 0 ? {
+        branchData: {
+          branchName: targetBranch.name,
+          branchLineIndex: (() => {
+            const siblings = Object.values(storyModel.branches).filter(b => b.parentBranchId === targetBranch.parentBranchId);
+            const siblingIndex = siblings.findIndex(b => b.id === targetBranch.id);
+            return siblingIndex >= 0 ? siblingIndex : 0;
+          })()
+        }
+      } : {})
+    });
+
+    // 添加新节点到数据模型
+    addNode(newNode);
+
+    // 将新节点添加到目标分支中，确保正确添加到对应分支的nodeIds数组
+    addNodeToBranch(targetBranchId, newNode.id);
+
+    // 更新目标节点的连接关系，连接到新创建的分镜节点
+    updateNode(nodeId, {
+      connections: [...(targetNode.connections || []), newNode.id]
+    });
+
+    // 调用父组件的添加分镜函数（如果存在）
+    if (onAddNode) {
+      onAddNode(newNode, targetBranch.nodeIds.length);
+    }
+
+    // 重新排布节点
+    setTimeout(() => globalLayoutTree(), 100);
   };
-  
+
+  // 处理生成分支的函数
+  const handleGenerateBranches = (nodeId) => {
+    if (onGenerateBranches) {
+      onGenerateBranches(nodeId);
+    }
+  };
+
+
+
+  // 这些函数将在StoryboardFlow组件内定义
+
   return (
     <div id="canvas-container" className="flex-grow h-full overflow-hidden cursor-grab relative" ref={canvasContainerRef}>
       <div id="canvas-world" className="absolute top-0 left-0" ref={canvasWorldRef}>
-        <svg id="storyboard-connections" style={{ position: 'absolute', top: 0, left: 0, width: '5000px', height: '5000px', pointerEvents: 'none' }}></svg>
+        <svg id="canvas-connections" style={{ position: 'absolute', top: 0, left: 0, width: '5000px', height: '5000px', pointerEvents: 'none' }}></svg>
         <div>
           {storyData.map(frameData => (
-            <div 
+            <div
               key={frameData.id}
               style={{ left: `${frameData.pos.x}px`, top: `${frameData.pos.y}px`, position: 'absolute' }}
               onClick={() => onFrameSelect(frameData.id)}
             >
-              <StoryNode 
-                data={{
-                  ...frameData,
-                  onMoveNode,
-                  onDeleteNode,
-                  onTextSave: (text) => onTextSave(frameData.id, text),
-                  onPromptSave: (prompt) => onPromptSave(frameData.id, prompt),
-                  onNodeStateChange: (newState) => onNodeStateChange(frameData.id, newState)
-                }} 
-                selected={frameData.id === selectedFrameId} 
+              <NodeRenderer
+                node={frameData}
+                selected={frameData.id === selectedFrameId}
+                onNodeClick={() => onFrameSelect(frameData.id)}
+                onNodeDelete={() => onDeleteNode(frameData.id)}
+                onGenerateBranches={handleGenerateBranches}
+                onMoveNode={onMoveNode}
+                onTextSave={onTextSave}
+                onPromptSave={onPromptSave}
+                onNodeStateChange={onNodeStateChange}
+                onAddFrame={handleAddFrame}
+                onExploreScene={onExploreScene}
+                onGenerateImage={onGenerateImage}
+                onDeleteFrame={onDeleteFrame}
+                onUpdateNode={updateNode}
               />
             </div>
           ))}
         </div>
       </div>
+
+
     </div>
   );
 }
 
 // 新的合并页面组件 - 用户画像 & 故事线生成
-function PersonaStoryPage({ 
-  selectedKeywords, 
-  personas, 
-  setPersonas, 
+function PersonaStoryPage({
+  selectedKeywords,
+  personas,
+  setPersonas,
   onStorySelect,
-  onBack 
+  onBack
 }) {
   const [selectedPersona, setSelectedPersona] = useState(null);
   const [isEditingPersona, setIsEditingPersona] = useState(false);
@@ -614,7 +1239,7 @@ function PersonaStoryPage({
   const [selectedStoryId, setSelectedStoryId] = useState(null);
   const [storyInput, setStoryInput] = useState('');
   const [isPersonaModalOpen, setIsPersonaModalOpen] = useState(false);
-  
+
   // 三个故事脚本区域的状态
   const [storyAreas, setStoryAreas] = useState({
     area1: { keywords: [] },
@@ -627,30 +1252,30 @@ function PersonaStoryPage({
 
   // 关键词类型配置 - 更新为新的5个维度
   const keywordTypes = [
-    { 
-      id: 'elements', 
-      name: '元素', 
-      color: 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100' 
+    {
+      id: 'elements',
+      name: '元素',
+      color: 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
     },
-    { 
-      id: 'user_traits', 
-      name: '用户特征', 
-      color: 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100' 
+    {
+      id: 'user_traits',
+      name: '用户特征',
+      color: 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
     },
-    { 
-      id: 'pain_points', 
-      name: '痛点', 
-      color: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' 
+    {
+      id: 'pain_points',
+      name: '痛点',
+      color: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
     },
-    { 
-      id: 'goals', 
-      name: '目标', 
-      color: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' 
+    {
+      id: 'goals',
+      name: '目标',
+      color: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
     },
-    { 
-      id: 'emotions', 
-      name: '情绪', 
-      color: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' 
+    {
+      id: 'emotions',
+      name: '情绪',
+      color: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
     }
   ];
 
@@ -678,7 +1303,25 @@ function PersonaStoryPage({
 
   // 处理拖拽关键词到故事构思区
   const handleDragStart = (e, keyword) => {
+    // 设置拖拽数据，兼容探索情景节点
+    const dragData = {
+      type: 'keyword',
+      keyword: keyword.text,
+      keywordData: keyword
+    };
+    e.dataTransfer.setData('text/plain', JSON.stringify(dragData));
     e.dataTransfer.setData('keyword', JSON.stringify(keyword));
+
+    // 添加颜色信息到拖拽数据
+    const keywordWithColor = {
+      ...keyword,
+      originalColor: keyword.type === 'emotions' ? 'red' :
+        keyword.type === 'actions' ? 'blue' :
+          keyword.type === 'goals' ? 'green' :
+            keyword.type === 'contexts' ? 'yellow' :
+              keyword.type === 'pain_points' ? 'purple' : 'blue'
+    };
+    e.dataTransfer.setData('keyword', JSON.stringify(keywordWithColor));
   };
 
   const handleDrop = (e, areaId) => {
@@ -721,20 +1364,20 @@ function PersonaStoryPage({
   const generateStories = async () => {
     const totalKeywords = Object.values(storyAreas).reduce((sum, area) => sum + area.keywords.length, 0);
     if (totalKeywords === 0) return;
-    
+
     setIsGenerating(true);
-    
+
     // 模拟生成多个故事脚本
     setTimeout(() => {
       const stories = [];
-      
+
       // 为每个有关键词的区域生成故事
       Object.entries(storyAreas).forEach(([areaId, area]) => {
         if (area.keywords.length > 0) {
           const storyId = `story-${areaId}`;
           const storyTitle = area.name;
           const storyContent = generateStoryContent(area);
-          
+
           stories.push({
             id: storyId,
             title: storyTitle,
@@ -745,7 +1388,7 @@ function PersonaStoryPage({
           });
         }
       });
-      
+
       setGeneratedStories(stories);
       setIsGenerating(false);
     }, 2000);
@@ -754,7 +1397,7 @@ function PersonaStoryPage({
   // 根据区域关键词生成故事内容
   const generateStoryContent = (area) => {
     const keywords = area.keywords.map(k => k.text).join('、');
-    
+
     if (area.name === '效率导向故事') {
       return `故事背景：
 基于关键词：${keywords}
@@ -794,7 +1437,7 @@ function PersonaStoryPage({
 
 故事结局：
 张敏不仅解决了当前的问题，还为未来类似的情况积累了经验。`;
-        }
+    }
   };
 
   // 选择故事脚本
@@ -817,7 +1460,7 @@ function PersonaStoryPage({
 
   // 保存用户画像编辑
   const savePersonaEdit = (updatedPersona) => {
-    setPersonas(prev => prev.map(p => 
+    setPersonas(prev => prev.map(p =>
       p.persona_name === selectedPersona.persona_name ? updatedPersona : p
     ));
     setSelectedPersona(updatedPersona);
@@ -832,8 +1475,8 @@ function PersonaStoryPage({
         className="absolute top-4 right-4 z-10 p-2 bg-white rounded-full shadow-md hover:shadow-lg transition-shadow"
       >
         <ArrowLeft className="w-5 h-5 text-gray-600" />
-              </button>
-              
+      </button>
+
       {/* 左侧面板：精简用户画像 + 气泡池 */}
       <div className="w-80 flex flex-col space-y-4">
         {/* 精简用户画像 */}
@@ -862,9 +1505,9 @@ function PersonaStoryPage({
                   <p className="text-xs text-gray-600">{selectedPersona.persona_details.age} • {selectedPersona.persona_details.occupation}</p>
                 </div>
               </div>
-              
+
               <p className="text-xs text-gray-700">{selectedPersona.persona_summary}</p>
-              
+
               {/* 关键信息标签 */}
               <div className="space-y-1">
                 {selectedPersona.persona_details.pain_points && selectedPersona.persona_details.pain_points.length > 0 && (
@@ -879,7 +1522,7 @@ function PersonaStoryPage({
                     </div>
                   </div>
                 )}
-              
+
                 {selectedPersona.persona_details.goals && selectedPersona.persona_details.goals.length > 0 && (
                   <div>
                     <div className="text-xs text-gray-500 mb-1">主要目标</div>
@@ -912,17 +1555,16 @@ function PersonaStoryPage({
               关键词气泡池
             </h2>
           </div>
-          
+
           {/* 筛选按钮 */}
           <div className="p-3 border-b border-gray-100">
             <div className="flex flex-wrap gap-1">
               <button
                 onClick={() => setActiveKeywordFilter('all')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-                  activeKeywordFilter === 'all' 
-                    ? 'bg-gray-900 text-white shadow-sm' 
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${activeKeywordFilter === 'all'
+                    ? 'bg-gray-900 text-white shadow-sm'
                     : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-800'
-                }`}
+                  }`}
               >
                 全部 ({selectedKeywords.length})
               </button>
@@ -933,11 +1575,10 @@ function PersonaStoryPage({
                   <button
                     key={type.id}
                     onClick={() => setActiveKeywordFilter(type.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-                      activeKeywordFilter === type.id 
-                        ? 'bg-gray-900 text-white shadow-sm' 
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${activeKeywordFilter === type.id
+                        ? 'bg-gray-900 text-white shadow-sm'
                         : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-800'
-                    }`}
+                      }`}
                   >
                     {type.name} ({count})
                   </button>
@@ -945,7 +1586,7 @@ function PersonaStoryPage({
               })}
             </div>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto p-3">
             <div className="space-y-3">
               {keywordTypes.map(type => {
@@ -956,10 +1597,10 @@ function PersonaStoryPage({
                 return (
                   <div key={type.id}>
                     <h3 className="text-xs font-medium text-gray-700 mb-2 flex items-center">
-                      <span className={`w-2 h-2 rounded-full mr-2 ${type.color.includes('blue') ? 'bg-blue-400' : 
+                      <span className={`w-2 h-2 rounded-full mr-2 ${type.color.includes('blue') ? 'bg-blue-400' :
                         type.color.includes('green') ? 'bg-green-400' :
-                        type.color.includes('red') ? 'bg-red-400' :
-                        type.color.includes('yellow') ? 'bg-yellow-400' : 'bg-purple-400'}`}></span>
+                          type.color.includes('red') ? 'bg-red-400' :
+                            type.color.includes('yellow') ? 'bg-yellow-400' : 'bg-purple-400'}`}></span>
                       {type.name}
                     </h3>
                     <div className="flex flex-wrap gap-1.5">
@@ -994,13 +1635,26 @@ function PersonaStoryPage({
               故事构思输入
             </h2>
           </div>
-          
+
           <div className="p-4">
             <textarea
               value={storyInput}
               onChange={(e) => setStoryInput(e.target.value)}
               placeholder="在这里输入您的初始故事想法..."
               className="w-full h-24 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm leading-relaxed resize-none"
+              onDrop={(e) => {
+                e.preventDefault();
+                try {
+                  const keywordData = e.dataTransfer.getData('keyword');
+                  if (keywordData) {
+                    const keyword = JSON.parse(keywordData);
+                    setStoryInput(prev => prev + (prev ? ' ' : '') + `[${keyword.text}]`);
+                  }
+                } catch (error) {
+                  // 忽略拖拽错误
+                }
+              }}
+              onDragOver={(e) => e.preventDefault()}
             />
           </div>
         </div>
@@ -1032,7 +1686,7 @@ function PersonaStoryPage({
               )}
             </button>
           </div>
-          
+
           <div className="p-4 flex-1 overflow-y-auto">
             <div className="grid grid-cols-3 gap-4 h-full">
               {Object.entries(storyAreas).map(([areaId, area]) => (
@@ -1049,25 +1703,25 @@ function PersonaStoryPage({
                       <p className="text-xs">拖拽关键词到这里</p>
                     </div>
                   )}
-                  
+
                   {/* 已添加的关键词 */}
                   <div className="space-y-2">
                     {area.keywords.map(keyword => (
-                    <div
-                      key={keyword.id}
+                      <div
+                        key={keyword.id}
                         className="inline-flex items-center justify-between bg-white p-2 rounded-lg border border-gray-200 max-w-full"
-                    >
+                      >
                         <span className="text-xs text-gray-700 flex-1 break-words pr-2">{keyword.text}</span>
-                      <button
+                        <button
                           onClick={() => removeFromStoryArea(areaId, keyword.id)}
                           className="text-gray-400 hover:text-red-500 flex-shrink-0 p-0.5 rounded hover:bg-red-50 transition-colors text-xs"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
               ))}
             </div>
           </div>
@@ -1076,34 +1730,33 @@ function PersonaStoryPage({
         {/* 生成的故事脚本预览 */}
         {generatedStories.length > 0 && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-          <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-gray-800 flex items-center">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-800 flex items-center">
                 <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center mr-2 text-sm">
                   📖
-              </div>
+                </div>
                 生成的故事脚本
-            </h2>
-            
-            {selectedStoryId && (
-              <button
-                onClick={confirmStorySelection}
+              </h2>
+
+              {selectedStoryId && (
+                <button
+                  onClick={confirmStorySelection}
                   className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-all font-medium text-sm"
-              >
-                选择此故事并继续
-              </button>
-            )}
-          </div>
-          
+                >
+                  选择此故事并继续
+                </button>
+              )}
+            </div>
+
             <div className="p-4">
               <div className="grid grid-cols-3 gap-4">
                 {generatedStories.map(story => (
                   <div
                     key={story.id}
-                    className={`border-2 rounded-xl p-4 cursor-pointer transition-all hover:shadow-lg ${
-                      selectedStoryId === story.id 
-                        ? 'border-blue-500 bg-blue-50 shadow-md' 
+                    className={`border-2 rounded-xl p-4 cursor-pointer transition-all hover:shadow-lg ${selectedStoryId === story.id
+                        ? 'border-blue-500 bg-blue-50 shadow-md'
                         : 'border-gray-200 hover:border-gray-300'
-                    }`}
+                      }`}
                     onClick={() => selectStory(story)}
                   >
                     <div className="flex items-center justify-between mb-3">
@@ -1114,15 +1767,15 @@ function PersonaStoryPage({
                         </div>
                       )}
                     </div>
-                    
+
                     <div className="text-xs text-gray-600 line-clamp-4 leading-relaxed">
                       {story.content.split('\n\n')[0]}
                     </div>
                   </div>
                 ))}
               </div>
+            </div>
           </div>
-        </div>
         )}
       </div>
 
@@ -1140,7 +1793,7 @@ function PersonaStoryPage({
 }
 
 // 用户画像编辑弹窗组件
-function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
+const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
   const [editedPersona, setEditedPersona] = useState(persona);
   const [activeTab, setActiveTab] = useState('basic');
   const [selectedPersonaIndex, setSelectedPersonaIndex] = useState(
@@ -1171,8 +1824,8 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
 
   // 添加数组项目
   const addArrayItem = (field, newItem = '') => {
-    const currentArray = field.includes('.') 
-      ? editedPersona.persona_details[field.split('.')[1]] 
+    const currentArray = field.includes('.')
+      ? editedPersona.persona_details[field.split('.')[1]]
       : editedPersona[field];
     const updatedArray = [...currentArray, newItem];
     updatePersonaField(field, updatedArray);
@@ -1180,8 +1833,8 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
 
   // 更新数组项目
   const updateArrayItem = (field, index, value) => {
-    const currentArray = field.includes('.') 
-      ? editedPersona.persona_details[field.split('.')[1]] 
+    const currentArray = field.includes('.')
+      ? editedPersona.persona_details[field.split('.')[1]]
       : editedPersona[field];
     const updatedArray = currentArray.map((item, i) => i === index ? value : item);
     updatePersonaField(field, updatedArray);
@@ -1189,8 +1842,8 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
 
   // 删除数组项目
   const removeArrayItem = (field, index) => {
-    const currentArray = field.includes('.') 
-      ? editedPersona.persona_details[field.split('.')[1]] 
+    const currentArray = field.includes('.')
+      ? editedPersona.persona_details[field.split('.')[1]]
       : editedPersona[field];
     const updatedArray = currentArray.filter((_, i) => i !== index);
     updatePersonaField(field, updatedArray);
@@ -1228,7 +1881,7 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
         name: newDimensionName.trim()
       };
       setCustomDimensions(prev => [...prev, newDimension]);
-      
+
       // 在editedPersona中初始化这个维度
       const dimensionKey = `custom_${newDimension.id}`;
       setEditedPersona(prev => ({
@@ -1238,7 +1891,7 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
           [dimensionKey]: []
         }
       }));
-      
+
       setNewDimensionName('');
       setShowAddDimension(false);
       setActiveTab(`custom_${newDimension.id}`);
@@ -1248,7 +1901,7 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
   // 删除自定义维度
   const removeCustomDimension = (dimensionId) => {
     setCustomDimensions(prev => prev.filter(dim => dim.id !== dimensionId));
-    
+
     // 从editedPersona中删除这个维度
     const dimensionKey = `custom_${dimensionId}`;
     setEditedPersona(prev => {
@@ -1258,7 +1911,7 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
         persona_details: restDetails
       };
     });
-    
+
     // 如果当前激活的是被删除的维度，切换到基本信息
     if (activeTab === `custom_${dimensionId}`) {
       setActiveTab('basic');
@@ -1281,7 +1934,7 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
                   <p className="text-sm text-gray-600">{editedPersona.persona_name}</p>
                 </div>
               </div>
-              
+
               {/* 多用户画像切换 */}
               {personas.length > 1 && (
                 <div className="flex items-center space-x-2 ml-8">
@@ -1291,11 +1944,10 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
                       <button
                         key={p.id}
                         onClick={() => switchPersona(index)}
-                        className={`px-3 py-1.5 text-sm rounded-lg transition-all ${
-                          selectedPersonaIndex === index
+                        className={`px-3 py-1.5 text-sm rounded-lg transition-all ${selectedPersonaIndex === index
                             ? 'bg-gray-900 text-white'
                             : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                        }`}
+                          }`}
                       >
                         {p.persona_name}
                       </button>
@@ -1304,8 +1956,8 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
                 </div>
               )}
             </div>
-            <button 
-              onClick={onClose} 
+            <button
+              onClick={onClose}
               className="p-2 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
             >
               <X className="w-5 h-5 text-gray-600" />
@@ -1321,11 +1973,10 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
                 <div key={tab.id} className="flex items-center">
                   <button
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex-1 flex items-center space-x-3 px-4 py-3 rounded-xl transition-all text-left ${
-                      activeTab === tab.id
+                    className={`flex-1 flex items-center space-x-3 px-4 py-3 rounded-xl transition-all text-left ${activeTab === tab.id
                         ? 'bg-gray-900 text-white'
                         : 'text-gray-600 hover:bg-gray-50'
-                    }`}
+                      }`}
                   >
                     <span className="text-lg">{tab.icon}</span>
                     <span className="font-medium text-sm">{tab.name}</span>
@@ -1341,7 +1992,7 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
                   )}
                 </div>
               ))}
-              
+
               {/* 添加维度按钮 */}
               <div className="pt-2 border-t border-gray-200 mt-4">
                 {!showAddDimension ? (
@@ -1402,7 +2053,7 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
                         placeholder="输入用户姓名"
                       />
                     </div>
-                    
+
                     <div>
                       <label className="block text-sm font-medium text-gray-900 mb-3">年龄</label>
                       <input
@@ -1462,7 +2113,7 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
                       <span>添加痛点</span>
                     </button>
                   </div>
-                  
+
                   <div className="space-y-3">
                     {editedPersona.persona_details.pain_points.map((point, index) => (
                       <div key={index} className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
@@ -1500,7 +2151,7 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
                       <span>添加目标</span>
                     </button>
                   </div>
-                  
+
                   <div className="space-y-3">
                     {editedPersona.persona_details.goals.map((goal, index) => (
                       <div key={index} className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
@@ -1538,7 +2189,7 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
                       <span>添加特征</span>
                     </button>
                   </div>
-                  
+
                   <div className="space-y-3">
                     {editedPersona.persona_details.behaviors.map((behavior, index) => (
                       <div key={index} className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
@@ -1579,7 +2230,7 @@ function PersonaEditModal({ persona, personas = [], onSave, onClose }) {
                       <span>添加条目</span>
                     </button>
                   </div>
-                  
+
                   <div className="space-y-3">
                     {(editedPersona.persona_details[activeTab] || []).map((item, index) => (
                       <div key={index} className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
@@ -1680,7 +2331,7 @@ function InterviewViewerModal({ interviews = [], index = 0, setIndex, onClose })
 // }
 
 // 创建内部组件以使用ReactFlow hooks
-function StoryboardFlow({ initialStoryText, onClose }) {
+const StoryboardFlow = ({ initialStoryText, onClose }) => {
   // 增加多步骤流程状态
   const [currentStep, setCurrentStep] = useState('interview'); // 'interview', 'persona', 'story', 'preparation', 'canvas'
   const [selectedKeywords, setSelectedKeywords] = useState([]);
@@ -1693,7 +2344,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     text: '',
     position: null
   });
-  
+
   // 自定义选择
   const contentRef = useRef(null);
   const isDraggingRef = useRef(false);
@@ -1701,9 +2352,21 @@ function StoryboardFlow({ initialStoryText, onClose }) {
   const lastSelectedTextRef = useRef('');
   const lastSelectedRectRef = useRef(null);
   const [dragHighlightRects, setDragHighlightRects] = useState([]);
-  
-  // 原有的分镜画布状态
-  const [storyData, setStoryData] = useState([]);
+
+  // 重构后的树状数据结构
+  const [storyModel, setStoryModel] = useState({
+    nodes: {}, // 所有节点对象，以 nodeId 为键
+    branches: {} // 所有分支对象，以 branchId 为键
+  });
+
+
+
+  // 为了兼容现有代码，保留 storyData 作为计算属性
+  const storyData = useMemo(() => {
+    const allNodes = Object.values(storyModel.nodes);
+    const sortedNodes = allNodes.sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
+    return sortedNodes;
+  }, [storyModel]);
   const [selectedFrameId, setSelectedFrameId] = useState(null);
   const [selectedStyle, setSelectedStyle] = useState('style1');
   const [useRealApi, setUseRealApi] = useState(true);
@@ -1720,27 +2383,336 @@ function StoryboardFlow({ initialStoryText, onClose }) {
   const [activeKeywordTypeCanvas, setActiveKeywordTypeCanvas] = useState('all');
   const [isReferenceDropdownOpen, setIsReferenceDropdownOpen] = useState(false);
 
-  // 根据当前节点实际宽度动态排布，保持等距
-  const reflowNodesEvenly = useCallback(() => {
-    const BASE_LEFT = 100;
-    const GAP = 40; // 固定间隔（相邻卡片之间的水平空隙）
-    setStoryData(prev => {
-      let currentX = BASE_LEFT;
-      const updated = prev.map((frame, index, arr) => {
-        const el = document.querySelector(`[data-node-id="${frame.id}"]`);
-        const widthAttr = el?.getAttribute('data-node-width');
-        const width = widthAttr ? parseInt(widthAttr) : (frame.state && frame.state !== 'collapsed' ? 360 : 240);
-        const newFrame = {
-          ...frame,
-          pos: { x: currentX, y: 150 },
-          connections: index < arr.length - 1 ? [arr[index + 1].id] : []
-        };
-        currentX += width + GAP;
-        return newFrame;
-      });
-      return updated;
+  // 情景探索相关状态
+  const [isSceneExplorationOpen, setIsSceneExplorationOpen] = useState(false);
+  const [currentExplorationNodeId, setCurrentExplorationNodeId] = useState(null);
+
+
+  
+
+
+  // 工具函数：操作新的树状数据结构
+  const addNode = useCallback((node) => {
+    setStoryModel(prev => ({
+      ...prev,
+      nodes: {
+        ...prev.nodes,
+        [node.id]: node
+      }
+    }));
+  }, []);
+
+  const updateNode = useCallback((nodeId, updates) => {
+    setStoryModel(prev => ({
+      ...prev,
+      nodes: {
+        ...prev.nodes,
+        [nodeId]: {
+          ...prev.nodes[nodeId],
+          ...updates
+        }
+      }
+    }));
+
+    // 如果更新会影响探索节点的宽度，则触发全局布局，确保其右侧分镜/子分支同步贴近
+    try {
+      const node = getNodeById(nodeId);
+      const isExplorationNode = node && (node.type === NODE_TYPES.EXPLORATION || node.explorationData?.isExplorationNode);
+      const widthAffecting = Object.prototype.hasOwnProperty.call(updates || {}, 'showBubblesPanel')
+        || Object.prototype.hasOwnProperty.call(updates || {}, 'state');
+      if (isExplorationNode && widthAffecting) {
+        setTimeout(() => globalLayoutTree(), 0);
+      }
+    } catch {}
+  }, []);
+
+  const removeNode = useCallback((nodeId) => {
+    setStoryModel(prev => {
+      const newNodes = { ...prev.nodes };
+      delete newNodes[nodeId];
+      return {
+        ...prev,
+        nodes: newNodes
+      };
     });
   }, []);
+
+  const addBranch = useCallback((branch) => {
+    setStoryModel(prev => ({
+      ...prev,
+      branches: {
+        ...prev.branches,
+        [branch.id]: branch
+      }
+    }));
+  }, []);
+
+  const updateBranch = useCallback((branchId, updates) => {
+    setStoryModel(prev => ({
+      ...prev,
+      branches: {
+        ...prev.branches,
+        [branchId]: {
+          ...prev.branches[branchId],
+          ...updates
+        }
+      }
+    }));
+  }, []);
+
+  const removeBranch = useCallback((branchId) => {
+    setStoryModel(prev => {
+      const newBranches = { ...prev.branches };
+      delete newBranches[branchId];
+      return {
+        ...prev,
+        branches: newBranches
+      };
+    });
+  }, []);
+
+  const getNodeById = useCallback((nodeId) => {
+    return storyModel.nodes[nodeId];
+  }, [storyModel.nodes]);
+
+  const getBranchById = useCallback((branchId) => {
+    return storyModel.branches[branchId];
+  }, [storyModel.branches]);
+
+  const getNodesInBranch = useCallback((branchId) => {
+    const branch = storyModel.branches[branchId];
+    if (!branch) return [];
+    return branch.nodeIds.map(nodeId => storyModel.nodes[nodeId]).filter(Boolean);
+  }, [storyModel]);
+
+  const addNodeToBranch = useCallback((branchId, nodeId, position = 'end') => {
+    setStoryModel(prev => {
+      const branch = prev.branches[branchId];
+      if (!branch) return prev;
+
+      // 防止重复插入相同节点
+      if (branch.nodeIds.includes(nodeId)) {
+        return prev;
+      }
+
+      let newNodeIds = [...branch.nodeIds];
+      if (position === 'end') {
+        newNodeIds.push(nodeId);
+      } else if (typeof position === 'number') {
+        newNodeIds.splice(position, 0, nodeId);
+      }
+
+      return {
+        ...prev,
+        branches: {
+          ...prev.branches,
+          [branchId]: {
+            ...branch,
+            nodeIds: newNodeIds
+          }
+        }
+      };
+    });
+  }, []);
+
+  const removeNodeFromBranch = useCallback((branchId, nodeId) => {
+    setStoryModel(prev => {
+      const branch = prev.branches[branchId];
+      if (!branch) return prev;
+
+      return {
+        ...prev,
+        branches: {
+          ...prev.branches,
+          [branchId]: {
+            ...branch,
+            nodeIds: branch.nodeIds.filter(id => id !== nodeId)
+          }
+        }
+      };
+    });
+  }, []);
+
+  // 设置全局 layoutTree 参数
+  useEffect(() => {
+    setLayoutTreeParams(storyModel, selectedFrameId, getNodeById, getBranchById, updateNode);
+  }, [storyModel.nodes, storyModel.branches, selectedFrameId, getBranchById, getNodeById, updateNode]); // 添加必要的依赖项
+
+  // 情景探索相关函数 - 使用新的树状数据结构
+  const handleExploreScene = (nodeId) => {
+
+
+    // 获取源节点
+    const sourceNode = getNodeById(nodeId);
+    if (!sourceNode) {
+      return;
+    }
+
+    // 检查是否已经存在探索节点
+    const existingExplorationNode = Object.values(storyModel.nodes).find(node =>
+      (node.type === NODE_TYPES.EXPLORATION || node.explorationData?.isExplorationNode) &&
+      node.explorationData?.parentNodeId === nodeId
+    );
+
+    if (existingExplorationNode) {
+      return;
+    }
+
+    // 获取源节点所在的分支
+    const sourceBranchId = sourceNode.branchId;
+    const sourceBranch = getBranchById(sourceBranchId);
+    if (!sourceBranch) {
+      return;
+    }
+
+    // 使用节点工厂函数创建探索节点
+    const explorationNode = createNode(NODE_TYPES.EXPLORATION, {
+      parentNodeId: nodeId,
+      branchId: sourceBranchId,
+      nodeIndex: sourceBranch.nodeIds.length,
+      onDataChange: (newData) => {
+        // 更新节点数据
+        updateNode(explorationNode.id, newData);
+      }
+    });
+
+    // 添加探索节点到数据模型
+    addNode(explorationNode);
+
+    // 将探索节点添加到源节点所在的分支中，确保正确插入到nodeIds数组
+    addNodeToBranch(sourceBranchId, explorationNode.id);
+
+    // 更新源节点的连接关系，连接到新创建的探索节点
+    updateNode(nodeId, {
+      connections: [...(sourceNode.connections || []), explorationNode.id]
+    });
+
+    // 重新排布节点
+    setTimeout(() => globalLayoutTree(), 100);
+  };
+
+  const handleGenerateImage = (nodeId) => {
+    // 这里可以添加生成画面的逻辑
+  };
+
+  const handleDeleteFrame = (nodeId) => {
+
+    // 获取要删除的节点
+    const nodeToDelete = getNodeById(nodeId);
+    if (!nodeToDelete) {
+      return;
+    }
+
+    // 从分支中移除节点
+    if (nodeToDelete.branchId) {
+      removeNodeFromBranch(nodeToDelete.branchId, nodeId);
+    }
+
+    // 删除节点
+    removeNode(nodeId);
+
+    // 如果删除的是当前选中的节点，清除选择
+    if (selectedFrameId === nodeId) {
+      setSelectedFrameId(null);
+    }
+  };
+
+  // 处理生成分支 - 使用新的树状数据结构
+  const handleGenerateBranches = async (branches) => {
+
+    // 找到当前选中的探索节点
+    const explorationNode = getNodeById(selectedFrameId);
+    if (!explorationNode || !(explorationNode.type === NODE_TYPES.EXPLORATION || explorationNode.explorationData?.isExplorationNode)) {
+      return;
+    }
+
+    // 设置当前探索节点ID
+    setCurrentExplorationNodeId(explorationNode.id);
+
+    // 获取探索节点所在的分支
+    const parentBranchId = explorationNode.branchId;
+    const parentBranch = getBranchById(parentBranchId);
+    if (!parentBranch) {
+      return;
+    }
+
+    // 计算现有的分支数量，用于分配新的分支层级
+    const existingChildBranches = Object.values(storyModel.branches).filter(branch =>
+      branch.parentBranchId === parentBranchId
+    );
+    const existingBranchCount = existingChildBranches.length;
+
+    // 记录真实创建的分支起始节点ID
+    const createdStartNodeIds = [];
+
+    // 为每个新分支创建分支对象和起始节点
+    branches.forEach((branchData, index) => {
+      // 创建新的分支对象
+      const newBranchId = `branch_${explorationNode.id}_${existingBranchCount + index}_${Date.now()}`;
+      const newBranch = {
+        id: newBranchId,
+        name: `分支 ${String.fromCharCode(65 + existingBranchCount + index)}`,
+        originNodeId: explorationNode.id,
+        nodeIds: [],
+        level: parentBranch.level + 1,
+        parentBranchId: parentBranchId
+      };
+
+      // 使用节点工厂函数创建分支起始节点
+      const branchStartNode = createNode(NODE_TYPES.BRANCH_START, {
+        label: '分镜 1',
+        branchId: newBranchId,
+        nodeIndex: 0,
+        parentNodeId: explorationNode.id,
+        explorationText: explorationNode.explorationData?.explorationText || '',
+        bubbleData: explorationNode.explorationData?.bubbleData || [],
+        branchData: {
+          branchName: newBranch.name,
+          branchLineIndex: existingBranchCount + index,
+          branchIndex: existingBranchCount + index
+        },
+        generationParams: {
+          explorationText: explorationNode.explorationData?.explorationText || '',
+          bubbleData: explorationNode.explorationData?.bubbleData || []
+        }
+      });
+
+      // 将分支对象添加到storyModel.branches中
+      addBranch(newBranch);
+
+      // 将节点对象添加到storyModel.nodes中
+      addNode(branchStartNode);
+
+      // 将节点添加到分支的nodeIds数组中
+      addNodeToBranch(newBranchId, branchStartNode.id);
+
+      // 收集真实创建的起始节点ID
+      createdStartNodeIds.push(branchStartNode.id);
+    });
+
+    // 更新探索节点的连接关系，连接到新创建的分支起始节点（使用真实ID）
+    updateNode(explorationNode.id, {
+      connections: createdStartNodeIds
+    });
+
+    // 重新排布节点，实现递归布局
+    setTimeout(() => globalLayoutTree(), 100);
+  };
+
+
+
+
+
+  // 根据当前节点实际宽度动态排布，保持等距 - 现在使用递归布局
+  const reflowNodesEvenly = useCallback(() => {
+    // 如果是初始分镜（只有一个分镜且标记为初始分镜），不进行重新排布
+    if (storyData.length === 1 && storyData[0]?.isInitialFrame) {
+      return;
+    }
+
+    // 使用新的递归布局算法
+    globalLayoutTree();
+  }, [selectedFrameId, storyData.length, storyData]);
 
   // 模拟多份访谈记录数据
   const interviewDataList = [
@@ -1777,7 +2749,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     {
       id: 3,
       title: "王芳 - 全职妈妈",
-      date: "2024-01-17", 
+      date: "2024-01-17",
       text: `王芳是一位32岁的全职妈妈，有两个孩子，日常需要为全家准备三餐。她对烹饪应用的需求更多样化，既要考虑营养搭配，也要照顾家人的口味偏好。
 
 "孩子们挑食，老公又想减肥，我自己还要控制血糖，一顿饭要满足这么多需求真的很头疼。" 王芳希望应用能够提供个性化的家庭菜谱推荐。
@@ -1794,7 +2766,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
   // 当前选中的访谈记录
   const [currentInterviewIndex, setCurrentInterviewIndex] = useState(0);
   const currentInterview = interviewDataList[currentInterviewIndex];
-  
+
   // 切换访谈记录时保持关键词，不重置
   useEffect(() => {
     // 不再重置关键词，保持用户已提取的关键词
@@ -1816,36 +2788,36 @@ function StoryboardFlow({ initialStoryText, onClose }) {
 
   // 关键词类型配置 - 更新为新的5个维度
   const keywordTypes = [
-    { 
-      id: 'elements', 
-      name: '元素', 
-      color: 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100' 
+    {
+      id: 'elements',
+      name: '元素',
+      color: 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
     },
-    { 
-      id: 'user_traits', 
-      name: '用户特征', 
-      color: 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100' 
+    {
+      id: 'user_traits',
+      name: '用户特征',
+      color: 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
     },
-    { 
-      id: 'pain_points', 
-      name: '痛点', 
-      color: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' 
+    {
+      id: 'pain_points',
+      name: '痛点',
+      color: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
     },
-    { 
-      id: 'goals', 
-      name: '目标', 
-      color: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' 
+    {
+      id: 'goals',
+      name: '目标',
+      color: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
     },
-    { 
-      id: 'emotions', 
-      name: '情绪', 
-      color: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' 
+    {
+      id: 'emotions',
+      name: '情绪',
+      color: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
     }
   ];
 
   useEffect(() => {
     if (initialStoryText) {
-        const generatedStory = `基于您的想法生成的故事脚本
+      const generatedStory = `基于您的想法生成的故事脚本
 "${initialStoryText}"
 
 故事背景
@@ -1857,9 +2829,11 @@ function StoryboardFlow({ initialStoryText, onClose }) {
 故事结局
 [在这里描述故事的结局和寓意]
 `;
-        setStory(generatedStory);
+      setStory(generatedStory);
     }
+  }, [initialStoryText]);
 
+  useEffect(() => {
     // 添加键盘快捷键：Ctrl/Cmd + K 打开关键词类型选择器
     const onKeyDown = (e) => {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
@@ -1871,7 +2845,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
           try {
             const range = selection.getRangeAt(0);
             rect = range.getBoundingClientRect();
-          } catch {}
+          } catch { }
         } else if (lastSelectedTextRef.current && lastSelectedRectRef.current) {
           text = lastSelectedTextRef.current;
           rect = lastSelectedRectRef.current;
@@ -1883,7 +2857,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             position: { x: rect.left + window.scrollX, y: rect.bottom + window.scrollY + 8 }
           });
           setTimeout(() => {
-            try { selection && selection.removeAllRanges(); } catch {}
+            try { selection && selection.removeAllRanges(); } catch { }
           }, 0);
           e.preventDefault();
         }
@@ -1891,7 +2865,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [initialStoryText]);
+  }, []);
 
   // 处理文本选择（兜底）
   const handleTextSelection = (e) => {
@@ -1910,7 +2884,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       });
 
       setTimeout(() => {
-        try { selection.removeAllRanges(); } catch {}
+        try { selection.removeAllRanges(); } catch { }
       }, 0);
     }
   };
@@ -1941,7 +2915,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     setDragHighlightRects([]);
 
     const sel = window.getSelection();
-    try { sel && sel.removeAllRanges(); } catch {}
+    try { sel && sel.removeAllRanges(); } catch { }
 
     const anchor = getCaretRangeFromPoint(e.clientX, e.clientY);
     if (!anchor) return;
@@ -2046,7 +3020,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     };
     const updatedKeywords = [...selectedKeywords, newKeyword];
     setSelectedKeywords(updatedKeywords);
-    
+
     // 同时更新到当前访谈记录中
     const updatedInterviewList = [...interviewDataList];
     updatedInterviewList[currentInterviewIndex].keywords = updatedKeywords;
@@ -2055,14 +3029,29 @@ function StoryboardFlow({ initialStoryText, onClose }) {
 
   // 处理拖拽关键词到画布
   const handleDragStart = (e, keyword) => {
-    e.dataTransfer.setData('keyword', JSON.stringify(keyword));
+    // 添加颜色信息到关键词数据
+    const keywordWithColor = {
+      ...keyword,
+      originalColor: keyword.type === 'emotions' ? 'red' :
+        keyword.type === 'actions' ? 'blue' :
+          keyword.type === 'goals' ? 'green' :
+            keyword.type === 'contexts' ? 'yellow' :
+              keyword.type === 'pain_points' ? 'purple' :
+                keyword.type === 'user_traits' ? 'blue' :
+                  keyword.type === 'scenarios' ? 'yellow' : 'blue'
+    };
+
+    // 设置多种数据格式以确保兼容性
+    e.dataTransfer.setData('keyword', JSON.stringify(keywordWithColor));
+    e.dataTransfer.setData('text/plain', JSON.stringify({ keywordData: keywordWithColor }));
+    e.dataTransfer.setData('application/json', JSON.stringify(keywordWithColor));
   };
 
   // 移除关键词
   const removeKeyword = (keywordId) => {
     const updatedKeywords = selectedKeywords.filter(k => k.id !== keywordId);
     setSelectedKeywords(updatedKeywords);
-    
+
     // 同时更新到当前访谈记录中
     const updatedInterviewList = [...interviewDataList];
     updatedInterviewList[currentInterviewIndex].keywords = updatedKeywords;
@@ -2087,7 +3076,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       }
     ];
     setPersonas(generatedPersonas);
-    
+
     // 基于关键词自动补充一些气泡
     const autoKeywords = [
       { id: Date.now() + 1, text: '效率优先', type: 'goals', timestamp: new Date().toISOString() },
@@ -2103,7 +3092,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
   const handleStorySelect = (selectedStory) => {
     setStory(selectedStory.content);
     // 基于选择的故事生成初始故事数据
-    const initialFrames = generateInitialFrames({
+    const initialStoryModel = generateInitialFrames({
       storyScript: selectedStory.content,
       selectedStyle: 'style1',
       frameCount: 1,
@@ -2114,51 +3103,85 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         enableBranching: true
       }
     });
-    setStoryData(initialFrames);
+    setStoryModel(initialStoryModel);
     setCurrentStep('canvas');
-    // 自动选择第一个分镜
-    setTimeout(() => {
-      if (initialFrames.length > 0) {
-        setSelectedFrameId(initialFrames[0].id);
-      }
-    }, 100);
+    // 直接选择第一个分镜，不使用setTimeout
+    const firstNodeId = Object.keys(initialStoryModel.nodes)[0];
+    if (firstNodeId) {
+      setSelectedFrameId(firstNodeId);
+    }
+    // 重置聚焦标志，确保进入Page3时能正确聚焦
+    // 通过设置一个全局标志来重置聚焦
+    window.resetCanvasFocus = true;
+
+    // 使用新的递归布局算法
+    setTimeout(() => globalLayoutTree(), 100);
   };
 
   // 保存用户画像编辑
   const savePersonaEdit = (updatedPersona) => {
-    setPersonas(prev => prev.map(p => 
+    setPersonas(prev => prev.map(p =>
       p.persona_name === updatedPersona.persona_name ? updatedPersona : p
     ));
-    setEditingPersona(null);
   };
 
-  // 生成初始分镜数据
+
+
+  // 生成初始分镜数据 - 使用新的树状数据结构
   const generateInitialFrames = (config) => {
-    const frames = [];
-    
     // 计算画布中心位置（考虑左侧边栏宽度）
     const sidebarWidth = 288; // 左侧边栏宽度 (w-72 = 288px)
     const canvasWidth = window.innerWidth - sidebarWidth;
     const canvasHeight = window.innerHeight;
-    
-    // 节点尺寸约为 360x200，所以居中时需要减去一半
-    const nodeWidth = 360;
-    const nodeHeight = 200;
+
+    // 使用配置中的节点尺寸进行居中计算
+    const nodeWidth = DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.COLLAPSED;
+    const nodeHeight = 200; // 默认节点高度
     const centerX = sidebarWidth + (canvasWidth / 2) - (nodeWidth / 2);
     const centerY = (canvasHeight / 2) - (nodeHeight / 2);
-    
-    // 只生成1个初始分镜，居中显示
-    frames.push({
-      id: `frame-0`,
-      label: `分镜 1`,
+
+    // 创建根分支
+    const rootBranchId = 'root-branch';
+    const rootBranch = {
+      id: rootBranchId,
+      name: '主线',
+      originNodeId: null, // 根分支没有起源节点
+      nodeIds: [],
+      level: 0, // 根分支层级为0
+      parentBranchId: null // 根分支没有父分支
+    };
+
+    // 使用节点工厂函数创建初始节点
+    const initialNode = createNode(NODE_TYPES.STORY_FRAME, {
+      id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // 使用统一的ID格式
+      label: '分镜 1',
       text: '',
       image: null,
       pos: { x: centerX, y: centerY },
+      baseX: centerX, // 设置基准位置
       connections: [],
-      styleName: config.selectedStyle
+      styleName: config.selectedStyle,
+      branchId: rootBranchId,
+      nodeIndex: 0,
+      isInitialFrame: true,
+      branchData: null
     });
+
+    // 将节点添加到分支中
+    rootBranch.nodeIds.push(initialNode.id);
+
+    // 初始化初始节点的状态
+    initializeNodeState(initialNode.id);
     
-    return frames;
+    // 返回新的数据结构
+    return {
+      nodes: {
+        [initialNode.id]: initialNode
+      },
+      branches: {
+        [rootBranchId]: rootBranch
+      }
+    };
   };
 
   // 处理分镜选择
@@ -2166,84 +3189,116 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     setSelectedFrameId(frameId);
   };
 
-  // 处理节点移动
+
+
+  // 处理节点移动 - 使用新的树状数据结构
   const handleMoveNode = (nodeId, direction) => {
-    const currentIndex = storyData.findIndex(frame => frame.id === nodeId);
+    // 获取要移动的节点
+    const nodeToMove = getNodeById(nodeId);
+    if (!nodeToMove || !nodeToMove.branchId) {
+      return;
+    }
+
+
+
+    // 获取节点所在的分支
+    const branch = getBranchById(nodeToMove.branchId);
+    if (!branch) {
+      return;
+    }
+
+    // 获取节点在分支中的位置
+    const currentIndex = branch.nodeIds.indexOf(nodeId);
     if (currentIndex === -1) return;
 
     let newIndex;
     if (direction === 'left' && currentIndex > 0) {
       newIndex = currentIndex - 1;
-    } else if (direction === 'right' && currentIndex < storyData.length - 1) {
+    } else if (direction === 'right' && currentIndex < branch.nodeIds.length - 1) {
       newIndex = currentIndex + 1;
     } else {
       return; // 无法移动
     }
 
-    setStoryData(prev => {
-      const updated = [...prev];
-      // 交换位置
-      [updated[currentIndex], updated[newIndex]] = [updated[newIndex], updated[currentIndex]];
-      
-      // 重新计算所有节点位置
-      return updated.map((frame, index) => ({
-        ...frame,
-        pos: { x: 100 + index * 400, y: 150 },
-        connections: index < updated.length - 1 ? [updated[index + 1].id] : []
-      }));
-    });
-    // 交换顺序后按实际宽度重新排布
-    setTimeout(() => reflowNodesEvenly(), 0);
+    // 在分支内交换节点位置
+    const newBranch = {
+      ...branch,
+      nodeIds: [...branch.nodeIds]
+    };
+    [newBranch.nodeIds[currentIndex], newBranch.nodeIds[newIndex]] =
+      [newBranch.nodeIds[newIndex], newBranch.nodeIds[currentIndex]];
+
+    // 更新分支
+    updateBranch(branch.id, { nodeIds: newBranch.nodeIds });
+
+    // 重新排布节点
+    setTimeout(() => globalLayoutTree(), 0);
   };
 
-  // 处理节点删除
+  // 处理节点删除 - 使用新的树状数据结构
   const handleDeleteNode = (nodeId) => {
-    setStoryData(prev => {
-      const filtered = prev.filter(frame => frame.id !== nodeId);
-      // 重新计算所有节点位置
-      return filtered.map((frame, index) => ({
-        ...frame,
-        pos: { x: 100 + index * 400, y: 150 },
-        connections: index < filtered.length - 1 ? [filtered[index + 1].id] : []
-      }));
-    });
-    
+    // 获取要删除的节点
+    const nodeToDelete = getNodeById(nodeId);
+    if (!nodeToDelete) {
+      return;
+    }
+
+    // 从分支中移除节点
+    if (nodeToDelete.branchId) {
+      removeNodeFromBranch(nodeToDelete.branchId, nodeId);
+    }
+
+    // 删除节点
+    removeNode(nodeId);
+
     // 如果删除的是当前选中的节点，清除选择
     if (selectedFrameId === nodeId) {
       setSelectedFrameId(null);
     }
+
     // 删除后重新排布
-    setTimeout(() => reflowNodesEvenly(), 0);
+    setTimeout(() => globalLayoutTree(), 0);
   };
 
-  // 处理文本保存
+  // 处理文本保存 - 使用新的树状数据结构
   const handleTextSave = (nodeId, text) => {
-    setStoryData(prev => 
-      prev.map(frame => 
-      frame.id === nodeId ? { ...frame, text } : frame
-      )
-    );
+    updateNode(nodeId, { text });
   };
 
-  // 处理提示词保存
+  // 处理提示词保存 - 使用新的树状数据结构
   const handlePromptSave = (nodeId, prompt) => {
-    setStoryData(prev => 
-      prev.map(frame => 
-        frame.id === nodeId ? { ...frame, prompt } : frame
-      )
-    );
+    updateNode(nodeId, { prompt });
   };
 
-  // 处理节点状态变化
+  // 处理节点状态变化 - 使用新的树状数据结构
   const handleNodeStateChange = (nodeId, newState) => {
-    setStoryData(prev => prev.map(frame => frame.id === nodeId ? { ...frame, state: newState } : frame));
-    // 状态变化会影响宽度，等下一帧读取真实宽度后再排布
-    setTimeout(() => reflowNodesEvenly(), 50);
+    updateNode(nodeId, { state: newState });
+    
+    // 更新节点状态并触发动态重新布局
+    const isExpanded = newState !== 'collapsed';
+    updateNodeState(nodeId, newState, isExpanded);
+  };
+
+  // 处理添加新分镜 - 使用新的树状数据结构
+  const handleAddNode = (newNode, insertIndex) => {
+    // 初始化新节点的状态
+    initializeNodeState(newNode.id);
+    
+    // 添加新节点到数据模型
+    addNode(newNode);
+
+    // 如果指定了分支ID，将节点添加到对应分支
+    if (newNode.branchId) {
+      addNodeToBranch(newNode.branchId, newNode.id, insertIndex);
+    }
+
+    // 重新排布节点
+    setTimeout(() => globalLayoutTree(), 100);
   };
 
   // 调整节点间距
   const adjustNodeSpacing = () => {
-    reflowNodesEvenly();
+    globalLayoutTree();
   };
 
   // 渲染访谈记录处理页面
@@ -2283,7 +3338,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             </div>
           </div>
         </div>
-        
+
         {/* 当前访谈记录信息 */}
         <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
           <div className="flex items-center justify-between">
@@ -2291,16 +3346,16 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             <span className="text-sm text-gray-500">{currentInterview.date}</span>
           </div>
         </div>
-        
+
         {/* 访谈内容区域 - 可滚动 */}
         <div className="flex-1 overflow-y-auto p-3">
-                      <div 
-              ref={contentRef}
-              className="prose relative max-w-none p-3 bg-gray-50 rounded-lg border border-gray-200 min-h-[350px] leading-relaxed text-gray-700 select-text"
-              onMouseDown={startCustomSelection}
-              onContextMenu={(e) => e.preventDefault()}
-              style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
-            >
+          <div
+            ref={contentRef}
+            className="prose relative max-w-none p-3 bg-gray-50 rounded-lg border border-gray-200 min-h-[350px] leading-relaxed text-gray-700 select-text"
+            onMouseDown={startCustomSelection}
+            onContextMenu={(e) => e.preventDefault()}
+            style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+          >
             {/* 拖动高亮覆盖层 */}
             <div className="absolute inset-0 pointer-events-none">
               {dragHighlightRects.map((r, idx) => (
@@ -2317,7 +3372,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
               </p>
             ))}
           </div>
-          
+
           <div className="mt-4 text-sm text-gray-600">
             已提取 {selectedKeywords.length} 个关键词
           </div>
@@ -2329,7 +3384,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
         <div className="p-3 border-b border-gray-100">
           <h3 className="text-lg font-semibold text-gray-800">提取的关键词</h3>
         </div>
-        
+
         <div className="flex-1 overflow-y-auto p-3">
           <div className="space-y-4">
             {keywordTypes.map(type => {
@@ -2341,7 +3396,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                   <h4 className="text-sm font-medium text-gray-700">{type.name}</h4>
                   <div className="space-y-2">
                     {typeKeywords.map(keyword => (
-                      <div 
+                      <div
                         key={keyword.id}
                         className={`inline-flex items-center justify-between p-2 rounded-lg border text-sm ${type.color} max-w-full`}
                       >
@@ -2360,7 +3415,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             })}
           </div>
         </div>
-        
+
         {/* 生成用户画像按钮 - 固定在面板底部 */}
         <div className="p-4 border-t border-gray-100">
           <button
@@ -2381,7 +3436,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             用户画像
           </h3>
         </div>
-        
+
         <div className="flex-1 overflow-y-auto p-3">
           {personas.length > 0 ? (
             <div className="space-y-4">
@@ -2397,7 +3452,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                     </button>
                   </div>
                   <p className="text-sm text-gray-600 mb-3">{persona.persona_summary}</p>
-                  
+
                   {/* 基本信息 */}
                   <div className="space-y-2 mb-3">
                     <div className="flex justify-between text-xs">
@@ -2413,7 +3468,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                       <span className="font-medium">{persona.persona_details.lifestyle}</span>
                     </div>
                   </div>
-                  
+
                   {/* 显示所有维度信息 */}
                   {persona.persona_details.pain_points && persona.persona_details.pain_points.length > 0 && (
                     <div className="mb-3">
@@ -2427,7 +3482,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                       </div>
                     </div>
                   )}
-                  
+
                   {persona.persona_details.goals && persona.persona_details.goals.length > 0 && (
                     <div className="mb-3">
                       <div className="text-xs font-medium text-gray-700 mb-1">目标动机</div>
@@ -2440,7 +3495,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                       </div>
                     </div>
                   )}
-                  
+
                   {persona.persona_details.behaviors && persona.persona_details.behaviors.length > 0 && (
                     <div className="mb-3">
                       <div className="text-xs font-medium text-gray-700 mb-1">行为习惯</div>
@@ -2453,7 +3508,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                       </div>
                     </div>
                   )}
-                  
+
                   {persona.persona_details.preferences && persona.persona_details.preferences.length > 0 && (
                     <div className="mb-3">
                       <div className="text-xs font-medium text-gray-700 mb-1">偏好习惯</div>
@@ -2466,7 +3521,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                       </div>
                     </div>
                   )}
-                  
+
                   {persona.persona_details.attitudes && persona.persona_details.attitudes.length > 0 && (
                     <div className="mb-3">
                       <div className="text-xs font-medium text-gray-700 mb-1">态度观点</div>
@@ -2479,7 +3534,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                       </div>
                     </div>
                   )}
-                  
+
                   {persona.persona_details.frustrations && persona.persona_details.frustrations.length > 0 && (
                     <div className="mb-3">
                       <div className="text-xs font-medium text-gray-700 mb-1">挫折困扰</div>
@@ -2492,7 +3547,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                       </div>
                     </div>
                   )}
-                  
+
                   {persona.persona_details.technologies && persona.persona_details.technologies.length > 0 && (
                     <div className="mb-3">
                       <div className="text-xs font-medium text-gray-700 mb-1">技术使用</div>
@@ -2516,7 +3571,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             </div>
           )}
         </div>
-        
+
         {/* 确定按钮 - 固定在底部 */}
         {personas.length > 0 && (
           <div className="p-4 border-t border-gray-100">
@@ -2561,7 +3616,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             <span>返回上一步</span>
           </button>
         </div>
-        
+
         {/* 右侧：其他按钮 */}
         <div className="flex items-center space-x-3">
           <button
@@ -2577,6 +3632,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
             查看访谈
           </button>
 
+
           {/* 画面参考下拉组件 */}
           <div className="relative reference-dropdown">
             <button
@@ -2584,8 +3640,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
               className="flex items-center space-x-3 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
             >
               <div className="w-8 h-8 rounded overflow-hidden border border-gray-200">
-                <img 
-                  src={styleUrls[selectedStyle] || styleUrls.style1} 
+                <img
+                  src={styleUrls[selectedStyle] || styleUrls.style1}
                   alt="风格参考"
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -2597,7 +3653,7 @@ function StoryboardFlow({ initialStoryText, onClose }) {
               <span className="text-gray-700 font-medium">画面参考</span>
               <ChevronDown className="w-4 h-4 text-gray-500" />
             </button>
-            
+
             {/* 下拉菜单 */}
             {isReferenceDropdownOpen && (
               <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
@@ -2618,15 +3674,14 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                         setReferenceImageUrl(style.image);
                         setIsReferenceDropdownOpen(false);
                       }}
-                      className={`w-full flex items-center space-x-3 p-2 rounded-lg transition-colors ${
-                        selectedStyle === style.id 
-                          ? 'bg-blue-50 border border-blue-200' 
+                      className={`w-full flex items-center space-x-3 p-2 rounded-lg transition-colors ${selectedStyle === style.id
+                          ? 'bg-blue-50 border border-blue-200'
                           : 'hover:bg-gray-50'
-                      }`}
+                        }`}
                     >
                       <div className="w-10 h-10 rounded overflow-hidden border border-gray-200">
-                        <img 
-                          src={style.image} 
+                        <img
+                          src={style.image}
                           alt={style.label}
                           className="w-full h-full object-cover"
                           onError={(e) => {
@@ -2649,37 +3704,70 @@ function StoryboardFlow({ initialStoryText, onClose }) {
           {/* 添加分镜按钮 */}
           <button
             onClick={() => {
-              // 添加新分镜的逻辑
-              const newFrameId = `frame-${storyData.length}`;
+              // 添加新分镜的逻辑 - 使用新的树状数据结构
+              const rootBranch = Object.values(storyModel.branches).find(branch => branch.level === 0);
+              if (!rootBranch) {
+                return;
+              }
+
+              // 计算新节点的基准位置
+              let newBaseX;
+              if (rootBranch.nodeIds.length === 0) {
+                // 第一个节点，使用画布中心
+                const sidebarWidth = 288;
+                const canvasWidth = window.innerWidth - sidebarWidth;
+                const nodeWidth = DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.COLLAPSED;
+                newBaseX = sidebarWidth + (canvasWidth / 2) - (nodeWidth / 2);
+              } else {
+                // 基于前一个节点计算基准位置
+                const lastNodeId = rootBranch.nodeIds[rootBranch.nodeIds.length - 1];
+                const lastNode = getNodeById(lastNodeId);
+                if (lastNode) {
+                  const lastNodeWidth = getNodeDisplayWidth(lastNode); // 使用显示宽度确保一致性
+                  const dynamicGap = calculateDynamicGap(lastNode, rootBranch.nodeIds.length - 1, rootBranch.nodeIds.map(id => getNodeById(id)).filter(Boolean));
+                  newBaseX = lastNode.pos.x + lastNodeWidth + dynamicGap;
+                } else {
+                  newBaseX = 100; // 默认位置
+                }
+              }
+
+              const newFrameId = `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
               const newFrame = {
                 id: newFrameId,
-                label: `分镜 ${storyData.length + 1}`,
+                label: `分镜 ${rootBranch.nodeIds.length + 1}`,
                 text: '',
                 image: null,
-                pos: { x: 100 + storyData.length * 400, y: 150 },
+                pos: { x: newBaseX, y: 150 }, // 使用计算出的基准位置
+                baseX: newBaseX, // 设置基准位置
                 connections: [],
-                styleName: selectedStyle
+                styleName: selectedStyle,
+                branchId: rootBranch.id,
+                nodeIndex: rootBranch.nodeIds.length
               };
-              
-              setStoryData(prev => {
-                const updatedData = [...prev, newFrame];
-                
-                // 如果有前一个节点，将新节点连接到前一个节点
-                if (prev.length > 0) {
-                  const lastFrame = prev[prev.length - 1];
-                  const updatedLastFrame = {
-                    ...lastFrame,
-                    connections: [...lastFrame.connections, newFrameId]
-                  };
-                  updatedData[updatedData.length - 2] = updatedLastFrame;
+
+              // 添加新节点到数据模型
+              addNode(newFrame);
+
+              // 将新节点添加到根分支
+              addNodeToBranch(rootBranch.id, newFrameId);
+
+              // 如果有前一个节点，将新节点连接到前一个节点
+              if (rootBranch.nodeIds.length > 0) {
+                const lastNodeId = rootBranch.nodeIds[rootBranch.nodeIds.length - 1];
+                const lastNode = getNodeById(lastNodeId);
+                if (lastNode) {
+                  updateNode(lastNodeId, {
+                    connections: [...(lastNode.connections || []), newFrameId]
+                  });
                 }
-                
-                return updatedData;
-              });
-              
+              }
+
               setSelectedFrameId(newFrameId);
+
+              // 立即重新排布节点位置，确保新节点位置正确
+              setTimeout(() => globalLayoutTree(), 100);
             }}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            className="flex items-center space-x-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
           >
             <Plus className="w-4 h-4" />
             <span>添加分镜</span>
@@ -2693,16 +3781,30 @@ function StoryboardFlow({ initialStoryText, onClose }) {
       <div className="flex-1 flex overflow-hidden">
         {/* 中间画布区域（全宽） */}
         <div className="flex-1 relative overflow-hidden">
-        <StoryboardCanvas 
-          storyData={storyData}
-          selectedFrameId={selectedFrameId}
-          onFrameSelect={handleFrameSelect}
-          onMoveNode={handleMoveNode}
-          onDeleteNode={handleDeleteNode}
-          onTextSave={handleTextSave}
-          onPromptSave={handlePromptSave}
-          onNodeStateChange={handleNodeStateChange}
-        />
+          <StoryboardCanvas
+            storyData={storyData}
+            storyModel={storyModel}
+            selectedFrameId={selectedFrameId}
+            onFrameSelect={handleFrameSelect}
+            onMoveNode={handleMoveNode}
+            onDeleteNode={handleDeleteNode}
+            onTextSave={handleTextSave}
+            onPromptSave={handlePromptSave}
+            onNodeStateChange={handleNodeStateChange}
+            onAddNode={handleAddNode}
+            onExploreScene={handleExploreScene}
+            onGenerateImage={handleGenerateImage}
+            onDeleteFrame={handleDeleteFrame}
+            onGenerateBranches={handleGenerateBranches}
+            setCurrentExplorationNodeId={setCurrentExplorationNodeId}
+            setIsSceneExplorationOpen={setIsSceneExplorationOpen}
+            // 传递工具函数
+            getNodeById={getNodeById}
+            getBranchById={getBranchById}
+            addNode={addNode}
+            addNodeToBranch={addNodeToBranch}
+            updateNode={updateNode}
+          />
 
           {/* 悬浮侧栏：分为两个独立卡片 */}
           <div className="absolute left-4 top-4 z-10 space-y-3">
@@ -2724,8 +3826,8 @@ function StoryboardFlow({ initialStoryText, onClose }) {
               </div>
               {!isSidebarCollapsed && (
                 <div className="flex-1 overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
-                  <StoryboardTree 
-                    storyData={storyData}
+                  <StoryboardTree
+                    storyModel={storyModel}
                     selectedFrameId={selectedFrameId}
                     onFrameSelect={handleFrameSelect}
                   />
@@ -2749,18 +3851,17 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                   {isKeywordPoolCollapsed ? '展开' : '收起'}
                 </button>
               </div>
-              
+
               {!isKeywordPoolCollapsed && (
                 <div className="flex-1 flex flex-col min-h-0">
                   {/* 筛选按钮 */}
                   <div className="flex flex-wrap gap-1.5 p-3 pb-2 flex-shrink-0">
                     <button
                       onClick={() => setActiveKeywordTypeCanvas('all')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-                        activeKeywordTypeCanvas === 'all' 
-                          ? 'bg-gray-900 text-white shadow-sm' 
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${activeKeywordTypeCanvas === 'all'
+                          ? 'bg-gray-900 text-white shadow-sm'
                           : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-800'
-                      }`}
+                        }`}
                     >
                       全部 ({selectedKeywords.length})
                     </button>
@@ -2771,18 +3872,17 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                         <button
                           key={type.id}
                           onClick={() => setActiveKeywordTypeCanvas(type.id)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-                            activeKeywordTypeCanvas === type.id 
-                              ? 'bg-gray-900 text-white shadow-sm' 
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${activeKeywordTypeCanvas === type.id
+                              ? 'bg-gray-900 text-white shadow-sm'
                               : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-800'
-                          }`}
+                            }`}
                         >
                           {type.name} ({count})
                         </button>
                       );
                     })}
                   </div>
-                  
+
                   {/* 关键词气泡 - 滚动容器 */}
                   <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400 min-h-0">
                     <div className="p-3 pt-0 pb-4 space-y-3">
@@ -2794,10 +3894,10 @@ function StoryboardFlow({ initialStoryText, onClose }) {
                         return (
                           <div key={type.id} className="break-inside-avoid">
                             <h3 className="text-xs font-medium text-gray-700 mb-2 flex items-center">
-                              <span className={`w-2 h-2 rounded-full mr-2 ${type.color.includes('blue') ? 'bg-blue-400' : 
+                              <span className={`w-2 h-2 rounded-full mr-2 ${type.color.includes('blue') ? 'bg-blue-400' :
                                 type.color.includes('green') ? 'bg-green-400' :
-                                type.color.includes('red') ? 'bg-red-400' :
-                                type.color.includes('yellow') ? 'bg-yellow-400' : 'bg-purple-400'}`}></span>
+                                  type.color.includes('red') ? 'bg-red-400' :
+                                    type.color.includes('yellow') ? 'bg-yellow-400' : 'bg-purple-400'}`}></span>
                               {type.name}
                             </h3>
                             <div className="flex flex-wrap gap-1.5">
@@ -2854,6 +3954,9 @@ function StoryboardFlow({ initialStoryText, onClose }) {
           onClose={() => setIsInterviewModalOpen(false)}
         />
       )}
+
+
+
     </div>
   );
 
@@ -2896,13 +3999,14 @@ function StoryboardFlow({ initialStoryText, onClose }) {
     }
   };
 
+
+
   return (
     <motion.div
-      className={`absolute inset-0 z-40 overflow-y-auto ${
-        currentStep === 'canvas' || currentStep === 'persona-story'
-          ? 'bg-white' 
+      className={`absolute inset-0 z-40 overflow-y-auto ${currentStep === 'canvas' || currentStep === 'persona-story'
+          ? 'bg-white'
           : 'bg-gray-50 p-4 sm:p-6 lg:p-8'
-      }`}
+        }`}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
@@ -2922,13 +4026,15 @@ function StoryboardFlow({ initialStoryText, onClose }) {
           {renderKeywordSelector()}
         </div>
       )}
+
+
     </motion.div>
   );
 }
 
 // 主组件包装器
-function StoryboardTest(props) {
+const StoryboardTest = (props) => {
   return <StoryboardFlow {...props} />;
-}
+};
 
 export default StoryboardTest;

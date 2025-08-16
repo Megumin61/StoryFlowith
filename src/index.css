@@ -181,12 +181,59 @@ body {
 }
 
 .story-tree-node.is-branch .node-content.active {
-    background-color: #fde047;
-    color: #a16207;
+    background-color: #dbeafe;
+    color: #1e40af;
+    border: 1px solid #3b82f6;
 }
 
 .branch-header .expand-icon.rotate-180 {
     transform: rotate(-180deg);
+}
+
+/* 分支关系样式 */
+.branch-container {
+    position: relative;
+}
+
+.branch-container::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, #3b82f6, #60a5fa);
+    border-radius: 1px;
+}
+
+.branch-content {
+    position: relative;
+}
+
+.branch-content::before {
+    content: '';
+    position: absolute;
+    left: -2px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #3b82f6;
+    border-radius: 1px;
+}
+
+/* 探索节点特殊样式 */
+.story-tree-node .node-content .exploration-icon {
+    color: #8b5cf6;
+}
+
+/* 分支节点特殊样式 */
+.story-tree-node.is-branch .node-content {
+    background-color: #f0f9ff;
+    border-left: 3px solid #3b82f6;
+}
+
+.story-tree-node.is-branch .node-content:hover {
+    background-color: #e0f2fe;
 }
 
 /* 自定义滚动条样式 */

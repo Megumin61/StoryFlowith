@@ -1,6 +1,6 @@
-import React, { memo, useState, useEffect, useRef } from 'react';
+import React, { memo, useState, useEffect, useRef, useCallback } from 'react';
 // 删除Handle和Position导入
-import { Image as ImageIcon, RefreshCw, Edit2, X, ChevronDown, ChevronUp, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Image as ImageIcon, RefreshCw, Edit2, X, ChevronDown, ChevronUp, Loader2, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 // 导入测试图像
 import testImage from '../images/test.png';
@@ -44,7 +44,39 @@ const nodeAnimations = {
   hover: { y: -4 },
 };
 
-// 删除添加节点按钮组件 - 不再需要
+// 添加新节点按钮组件
+const AddNodeButton = ({ position, onClick, style }) => {
+  // 使用useCallback确保函数引用稳定
+  const handleButtonClick = useCallback((e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    console.log(`点击了${position}侧添加分镜按钮`);
+
+    // 确保onClick是一个函数
+    if (typeof onClick === 'function') {
+      onClick(position);
+    } else {
+      console.error("onClick函数未定义");
+    }
+  }, [onClick, position]);
+
+  return (
+    <div
+      className="absolute top-1/2 transform -translate-y-1/2 hover:scale-105 transition-transform duration-100 z-50"
+      style={{
+        [position === 'left' ? 'left' : 'right']: '-25px', // 将按钮移到节点外部
+        ...style
+      }}
+      onClick={handleButtonClick}
+    >
+      <div className="w-[35px] h-[34px] rounded-[11px] bg-[#A4ABD0]/16 flex items-center justify-center cursor-pointer">
+        <div className="w-[23px] h-[22px] rounded-[6px] bg-[#848FA7]/50 flex items-center justify-center">
+          <Plus size={14} className="text-white" />
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // 在节点上方添加左右移动按钮组件
 const MoveNodeButtons = ({ onMoveLeft, onMoveRight }) => (
@@ -67,67 +99,6 @@ const MoveNodeButtons = ({ onMoveLeft, onMoveRight }) => (
     </button>
   </div>
 );
-
-// 悬浮按钮组件
-const FloatingButtons = ({ nodeId, onAddFrame, onExploreScene, onGenerateImage, onDeleteFrame, isVisible }) => {
-  const buttons = [
-    {
-      id: 'add',
-      text: '新分镜',
-      icon: '＋',
-      onClick: (e) => { e.stopPropagation(); onAddFrame(); }
-    },
-    {
-      id: 'explore',
-      text: '情景探索',
-      icon: '○',
-      onClick: (e) => { e.stopPropagation(); onExploreScene(); }
-    },
-    {
-      id: 'generate',
-      text: '画面生成',
-      icon: '□',
-      onClick: (e) => { e.stopPropagation(); onGenerateImage(); }
-    },
-    {
-      id: 'delete',
-      text: '删除分镜',
-      icon: '✕',
-      onClick: (e) => { e.stopPropagation(); onDeleteFrame(); }
-    }
-  ];
-
-  if (!isVisible) return null;
-
-  return (
-    <div 
-      className="bg-white rounded-lg shadow-md border border-gray-200 p-3 pointer-events-auto"
-      style={{
-        width: '120px',
-        marginLeft: '12px',
-        zIndex: 5 // 设置较低的z-index，避免遮挡ExplorationNode
-      }}
-    >
-      <div className="space-y-2">
-        {buttons.map((button) => (
-          <button
-            key={button.id}
-            className="
-              w-full flex items-center gap-2 px-3 py-2 
-              text-sm text-gray-700 hover:text-gray-900
-              hover:bg-gray-50 rounded-md transition-colors duration-200
-              border border-transparent hover:border-gray-200
-            "
-            onClick={button.onClick}
-          >
-            <div className="text-base text-gray-500 font-light">{button.icon}</div>
-            <div className="font-medium whitespace-nowrap">{button.text}</div>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 // 节点状态类型
 const NODE_STATES = {
@@ -153,7 +124,9 @@ const StoryNode = ({ data, selected }) => {
   const [regeneratePrompt, setRegeneratePrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [toasts, setToasts] = useState([]);
-  const [showFloatingPanel, setShowFloatingPanel] = useState(false);
+  const [isHoveringLeftButton, setIsHoveringLeftButton] = useState(false);
+  const [isHoveringRightButton, setIsHoveringRightButton] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   
   // 移除调试面板状态
   // const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -165,6 +138,10 @@ const StoryNode = ({ data, selected }) => {
   const promptTextAreaRef = useRef(null);
   const toastPositionRef = useRef({ x: 0, y: 0 });
   const nodeRef = useRef(null);
+  const leftSideRef = useRef(null);
+  const rightSideRef = useRef(null);
+  const leftButtonRef = useRef(null);
+  const rightButtonRef = useRef(null);
   const prevNodeStateRef = useRef(nodeState);
 
   // 动画控制
@@ -196,12 +173,11 @@ const StoryNode = ({ data, selected }) => {
 
   // 初始化控件和数据
   useEffect(() => {
-    console.log('🔧 StoryNode init useEffect triggered:', { nodeId: data.id });
     controls.start({ opacity: 1, scale: 1 });
     setNodeText(data.text || '');
     // 不再同步visualPrompt和text
     setVisualPrompt(data.imagePrompt || '');
-  }, [data.id]); // 只在节点ID变化时触发，避免无限循环
+  }, [controls, data.text, data.imagePrompt]);
 
   // 修改副作用，避免ResizeObserver循环错误
   useEffect(() => {
@@ -264,7 +240,7 @@ const StoryNode = ({ data, selected }) => {
       clearTimeout(resizeTimeout);
       clearTimeout(resizeTimer);
     };
-  }, []); // 移除依赖项，避免无限循环
+  }, [nodeState, nodeText, visualPrompt, regeneratePrompt]);
 
   // 添加焦点管理
   useEffect(() => {
@@ -286,60 +262,6 @@ const StoryNode = ({ data, selected }) => {
     }
   }, [nodeState]);
 
-  // 添加点击外部关闭面板的功能
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      // 只有当节点处于折叠状态时，点击外部才关闭面板
-      if (showFloatingPanel && nodeState === NODE_STATES.COLLAPSED && nodeRef.current && !nodeRef.current.contains(event.target)) {
-        setShowFloatingPanel(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showFloatingPanel, nodeState]);
-
-  // 动态高度测量和上报功能
-  useEffect(() => {
-    // 使用防抖函数减少上报频率
-    let heightTimeout;
-    
-    const measureAndReportHeight = () => {
-      clearTimeout(heightTimeout);
-      
-      heightTimeout = setTimeout(() => {
-        if (nodeRef.current && data.onUpdateNode) {
-          try {
-            const rect = nodeRef.current.getBoundingClientRect();
-            const actualHeight = rect.height;
-            
-            // 上报真实高度到父组件
-            data.onUpdateNode(data.id, { actualHeight });
-          } catch (error) {
-            console.error('测量节点高度时出错:', error);
-          }
-        }
-      }, 100); // 100ms防抖
-    };
-
-    // 当节点状态、文本内容或视觉提示发生变化时，重新测量高度
-    measureAndReportHeight();
-
-    // 监听窗口大小变化
-    const handleResize = () => {
-      measureAndReportHeight();
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      clearTimeout(heightTimeout);
-    };
-  }, [nodeState, nodeText, visualPrompt, data.onUpdateNode, data.id]);
-
   // 优化节点状态变化处理
   useEffect(() => {
     if (prevNodeStateRef.current !== nodeState && typeof data.onStateChange === 'function') {
@@ -347,25 +269,61 @@ const StoryNode = ({ data, selected }) => {
       
       // 将状态变更延迟一帧，确保UI更新后再触发布局调整
       requestAnimationFrame(() => {
-        data.onStateChange(data.id, nodeState, isExpanded);
+      data.onStateChange(data.id, nodeState, isExpanded);
       });
       
       prevNodeStateRef.current = nodeState;
     }
-    
-    // 当节点状态变为折叠时，隐藏右侧面板
-    if (nodeState === NODE_STATES.COLLAPSED) {
-      setShowFloatingPanel(false);
-    }
   }, [nodeState, data]);
 
-  // 控制小面板显示：只有选中的展开状态节点才显示
+  // 添加鼠标事件处理
   useEffect(() => {
-    const shouldShowPanel = selected && nodeState !== NODE_STATES.COLLAPSED;
-    setShowFloatingPanel(shouldShowPanel);
-  }, [selected, nodeState]);
+    const handleMouseEnterLeftButton = () => {
+      setIsHoveringLeftButton(true);
+    };
 
-  // 删除鼠标事件处理 - 不再需要
+    const handleMouseLeaveLeftButton = (e) => {
+      // 检查鼠标是否移动到感应区域
+      if (!leftSideRef.current?.contains(e.relatedTarget)) {
+        setIsHoveringLeftButton(false);
+      }
+    };
+
+    const handleMouseEnterRightButton = () => {
+      setIsHoveringRightButton(true);
+    };
+
+    const handleMouseLeaveRightButton = (e) => {
+      // 检查鼠标是否移动到感应区域
+      if (!rightSideRef.current?.contains(e.relatedTarget)) {
+        setIsHoveringRightButton(false);
+      }
+    };
+
+    // 为按钮添加事件监听
+    if (leftButtonRef.current) {
+      leftButtonRef.current.addEventListener('mouseenter', handleMouseEnterLeftButton);
+      leftButtonRef.current.addEventListener('mouseleave', handleMouseLeaveLeftButton);
+    }
+
+    if (rightButtonRef.current) {
+      rightButtonRef.current.addEventListener('mouseenter', handleMouseEnterRightButton);
+      rightButtonRef.current.addEventListener('mouseleave', handleMouseLeaveRightButton);
+    }
+
+    return () => {
+      // 清理事件监听
+      if (leftButtonRef.current) {
+        leftButtonRef.current.removeEventListener('mouseenter', handleMouseEnterLeftButton);
+        leftButtonRef.current.removeEventListener('mouseleave', handleMouseLeaveLeftButton);
+      }
+
+      if (rightButtonRef.current) {
+        rightButtonRef.current.removeEventListener('mouseenter', handleMouseEnterRightButton);
+        rightButtonRef.current.removeEventListener('mouseleave', handleMouseLeaveRightButton);
+      }
+    };
+  }, []);
 
   const addToast = (message, type = 'success') => {
     // 确保nodeRef已设置并且有getBoundingClientRect方法
@@ -399,22 +357,12 @@ const StoryNode = ({ data, selected }) => {
       handleTextSave();
       handlePromptSave();
     }
-    
-    if (nodeState !== newState) {
-      setNodeState(newState);
-      console.log(`节点状态从 ${nodeState} 变为 ${newState}`);
-      
-      // 通知父组件状态变化
-      if (data.onNodeStateChange) {
-        data.onNodeStateChange(newState);
-      }
-    }
+    setNodeState(newState);
   };
 
   // 修改文本变化处理函数，减少DOM操作频率
   const handleTextChange = (e) => {
-    const newText = e.target.value;
-    setNodeText(newText);
+    setNodeText(e.target.value);
 
     // 使用防抖避免频繁触发布局计算
     if (handleTextChange.timeout) {
@@ -422,36 +370,30 @@ const StoryNode = ({ data, selected }) => {
     }
     
     handleTextChange.timeout = setTimeout(() => {
-      // 调用 onUpdateNode 回调更新节点数据
-      if (data.onUpdateNode) {
-        data.onUpdateNode(data.id, { text: newText });
-      }
-      
-      requestAnimationFrame(() => {
-        try {
-          e.target.style.height = 'auto';
-          const scrollHeight = e.target.scrollHeight;
-          
-          // 限制最大高度
-          const maxHeight = 200;
-          e.target.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
-          
-          // 如果内容超出最大高度，启用滚动
-          if (scrollHeight > maxHeight) {
-            e.target.style.overflowY = 'auto';
-          } else {
-            e.target.style.overflowY = 'hidden';
-          }
-        } catch (err) {
-          console.error('调整文本区域高度时出错:', err);
+    requestAnimationFrame(() => {
+      try {
+      e.target.style.height = 'auto';
+        const scrollHeight = e.target.scrollHeight;
+        
+        // 限制最大高度
+        const maxHeight = 200;
+        e.target.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+        
+        // 如果内容超出最大高度，启用滚动
+        if (scrollHeight > maxHeight) {
+          e.target.style.overflowY = 'auto';
+        } else {
+          e.target.style.overflowY = 'hidden';
         }
-      });
+      } catch (err) {
+        console.error('调整文本区域高度时出错:', err);
+      }
+    });
     }, 50);
   };
 
   const handlePromptChange = (e) => {
-    const newPrompt = e.target.value;
-    setVisualPrompt(newPrompt);
+    setVisualPrompt(e.target.value);
 
     // 使用防抖避免频繁触发布局计算
     if (handlePromptChange.timeout) {
@@ -459,39 +401,31 @@ const StoryNode = ({ data, selected }) => {
     }
     
     handlePromptChange.timeout = setTimeout(() => {
-      // 调用 onUpdateNode 回调更新节点数据
-      if (data.onUpdateNode) {
-        data.onUpdateNode(data.id, { imagePrompt: newPrompt });
-      }
-      
-      requestAnimationFrame(() => {
-        try {
-          e.target.style.height = 'auto';
-          const scrollHeight = e.target.scrollHeight;
-          
-          // 限制最大高度
-          const maxHeight = 200;
-          e.target.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
-          
-          // 如果内容超出最大高度，启用滚动
-          if (scrollHeight > maxHeight) {
-            e.target.style.overflowY = 'auto';
-          } else {
-            e.target.style.overflowY = 'hidden';
-          }
-        } catch (err) {
-          console.error('调整文本区域高度时出错:', err);
+    requestAnimationFrame(() => {
+      try {
+      e.target.style.height = 'auto';
+        const scrollHeight = e.target.scrollHeight;
+        
+        // 限制最大高度
+        const maxHeight = 200;
+        e.target.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+        
+        // 如果内容超出最大高度，启用滚动
+        if (scrollHeight > maxHeight) {
+          e.target.style.overflowY = 'auto';
+        } else {
+          e.target.style.overflowY = 'hidden';
         }
-      });
+      } catch (err) {
+        console.error('调整文本区域高度时出错:', err);
+      }
+    });
     }, 50);
   };
 
   const handleTextSave = () => {
     if (nodeText !== data.text) {
-      // 调用父组件的保存函数
-      if (data.onTextSave) {
-        data.onTextSave(nodeText);
-      }
+      data.onUpdateNode?.(data.id, { text: nodeText });
       addToast('情节描述已保存', 'success');
     }
   };
@@ -499,10 +433,7 @@ const StoryNode = ({ data, selected }) => {
   // 添加视觉描述保存函数
   const handlePromptSave = () => {
     if (visualPrompt !== data.imagePrompt) {
-      // 调用父组件的保存函数
-      if (data.onPromptSave) {
-        data.onPromptSave(visualPrompt);
-      }
+      data.onUpdateNode?.(data.id, { imagePrompt: visualPrompt });
     }
   };
 
@@ -971,28 +902,24 @@ const StoryNode = ({ data, selected }) => {
     }
   };
 
-  // 删除添加分镜函数 - 不再需要
+  // 添加分镜函数
+  const handleAddNode = useCallback((position) => {
+    console.log(`添加分镜 ${position} 到节点 ${data.id}`);
+
+    // 使用setTimeout确保事件处理完成后再调用onAddNode
+    setTimeout(() => {
+      if (typeof data.onAddNode === 'function') {
+        data.onAddNode(data.id, position);
+      } else {
+        console.error("onAddNode 函数未定义", data);
+      }
+    }, 0);
+  }, [data]);
 
   // 渲染折叠状态
   const renderCollapsedCard = () => (
-    <div className="flex flex-col p-3 min-h-[80px] cursor-pointer" onClick={handleCardClick}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-xs text-gray-400 font-medium">{data.label}</div>
-        {/* 分支标识 - 统一显示格式 */}
-        {data.branchData ? (
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-            <span className="text-xs text-blue-600 font-medium">
-              {data.branchData.branchName || `分支 ${(data.branchData.branchLineIndex || 0) + 1}`}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-            <span className="text-xs text-gray-500 font-medium">主线</span>
-          </div>
-        )}
-      </div>
+    <div className="flex flex-col p-4 min-h-[100px] cursor-pointer" onClick={handleCardClick}>
+      <div className="text-xs text-gray-400 font-medium mb-2">{data.label}</div>
       <textarea
         data-no-drag
         value={nodeText}
@@ -1009,7 +936,7 @@ const StoryNode = ({ data, selected }) => {
 
   // 渲染编辑状态 - 添加简约的右上角关闭按钮
   const renderEditingCard = () => (
-    <div className="flex flex-col p-3 relative">
+    <div className="flex flex-col p-4 relative">
       {/* 简约右上角删除按钮 - 提高z-index */}
       <button
         onClick={() => handleDeleteNode()}
@@ -1020,23 +947,7 @@ const StoryNode = ({ data, selected }) => {
         <X size={14} />
       </button>
       
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-xs text-gray-400 font-medium">{data.label}</div>
-        {/* 分支标识 - 统一显示格式 */}
-        {data.branchData ? (
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-            <span className="text-xs text-blue-600 font-medium">
-              {data.branchData.branchName || `分支 ${(data.branchData.branchLineIndex || 0) + 1}`}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-            <span className="text-xs text-gray-500 font-medium">主线</span>
-          </div>
-        )}
-      </div>
+      <div className="text-xs text-gray-400 font-medium mb-2">{data.label}</div>
       <textarea
         data-no-drag
         ref={textAreaRef}
@@ -1116,7 +1027,7 @@ const StoryNode = ({ data, selected }) => {
 
   // 渲染生成中状态 - 添加简约的右上角关闭按钮
   const renderGeneratingCard = () => (
-    <div className="flex flex-col p-3 relative">
+    <div className="flex flex-col p-4 relative">
       {/* 简约右上角删除按钮 - 提高z-index */}
       <button
         onClick={() => handleDeleteNode()}
@@ -1127,23 +1038,7 @@ const StoryNode = ({ data, selected }) => {
         <X size={14} />
       </button>
       
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-xs text-gray-400 font-medium">{data.label}</div>
-        {/* 分支标识 - 统一显示格式 */}
-        {data.branchData ? (
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-            <span className="text-xs text-blue-600 font-medium">
-              {data.branchData.branchName || `分支 ${(data.branchData.branchLineIndex || 0) + 1}`}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-            <span className="text-xs text-gray-500 font-medium">主线</span>
-          </div>
-        )}
-      </div>
+      <div className="text-xs text-gray-400 font-medium mb-3">{data.label}</div>
       <div className="h-32 bg-gray-50 rounded-md flex items-center justify-center">
         <div className="text-center">
           <Loader2 size={24} className="animate-spin text-gray-500 mx-auto mb-2" />
@@ -1210,23 +1105,7 @@ const StoryNode = ({ data, selected }) => {
       <div className="border-t border-gray-100"></div>
 
       <div className="p-3">
-        <div className="flex items-center justify-between mb-1">
-          <div className="text-xs text-gray-400 font-medium">{data.label}</div>
-          {/* 分支标识 - 统一显示格式 */}
-          {data.branchData ? (
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <span className="text-xs text-blue-600 font-medium">
-                {data.branchData.branchName || `分支 ${(data.branchData.branchLineIndex || 0) + 1}`}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-              <span className="text-xs text-gray-500 font-medium">主线</span>
-            </div>
-          )}
-        </div>
+        <div className="text-xs text-gray-400 font-medium mb-1">{data.label}</div>
         <textarea
           data-no-drag
           value={nodeText}
@@ -1302,23 +1181,7 @@ const StoryNode = ({ data, selected }) => {
 
         {/* 主卡片内容区域 - 包含节点文本和视觉提示词 */}
         <div className="p-3">
-          <div className="flex items-center justify-between mb-1">
-            <div className="text-xs text-gray-400 font-medium">{data.label}</div>
-            {/* 分支标识 - 统一显示格式 */}
-            {data.branchData ? (
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                <span className="text-xs text-blue-600 font-medium">
-                  {data.branchData.branchName || `分支 ${(data.branchData.branchLineIndex || 0) + 1}`}
-                </span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-                <span className="text-xs text-gray-500 font-medium">主线</span>
-              </div>
-            )}
-          </div>
+          <div className="text-xs text-gray-400 font-medium mb-1">{data.label}</div>
           {/* 使用可编辑的textarea替代div，并添加自动调整高度属性 */}
           <textarea
             data-no-drag
@@ -1472,114 +1335,105 @@ const StoryNode = ({ data, selected }) => {
     }
   };
 
-  // 修改renderNode函数，让小面板成为节点的一部分
+  // 修改renderNode函数，确保删除按钮不被感应区域挡住，同时保持悬浮添加分镜功能
   const renderNode = () => (
     <>
-      <div className="flex items-start">
-        <motion.div
-          ref={nodeRef}
-          className={`
-            bg-white rounded-[20px]
-            ${selected ? 'ring-2 ring-blue-500' : ''}
-            shadow-[0_4px_12px_rgba(0,0,0,0.1)]
-            relative
-          `}
-          style={{
-            width: nodeState === NODE_STATES.COLLAPSED ? NODE_WIDTH.COLLAPSED + 'px' : NODE_WIDTH.EXPANDED + 'px',
-            transformOrigin: 'center center',
-          }}
-          animate={controls}
-          layout="position"
-          transition={{
-            type: "spring",
-            stiffness: 300,
-            damping: 30,
-            duration: 0.3
-          }}
-          data-state={nodeState}
-          data-expanded={nodeState !== NODE_STATES.COLLAPSED ? 'true' : 'false'}
-          data-node-id={data.id}
-          data-node-index={data.nodeIndex || 0}
-          data-node-width={nodeState === NODE_STATES.COLLAPSED ? NODE_WIDTH.COLLAPSED : NODE_WIDTH.EXPANDED}
-          data-node-height={nodeState === NODE_STATES.COLLAPSED ? 100 : 250}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            // 触发父组件的右键点击事件
-            if (data.onContextMenu) {
-              data.onContextMenu(e, data.id);
-            }
-          }}
-        >
-          {/* 展开状态时显示左右移动按钮 */}
-          {(nodeState !== NODE_STATES.COLLAPSED) && data.onMoveNode && (
-            <MoveNodeButtons
-              onMoveLeft={e => { e.stopPropagation(); data.onMoveNode(data.id, 'left'); }}
-              onMoveRight={e => { e.stopPropagation(); data.onMoveNode(data.id, 'right'); }}
-            />
-          )}
-          {/* 节点内容 - 不包含在z-index容器中 */}
-          {renderNodeContent()}
-
-          {/* 卡片下方的扩展编辑区域 */}
-          <div className="absolute left-0 right-0 w-full z-40">
-            <AnimatePresence>
-              {nodeState === NODE_STATES.IMAGE_EDITING && (
-                <motion.div
-                  className="absolute top-0 left-0 w-full z-40"
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                  style={{ pointerEvents: 'auto' }}
-                >
-                  {/* 这里不再需要重复编辑区域，因为我们已经在renderImageEditingCard中实现了 */}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </motion.div>
-
-        {/* 显示右侧小面板 - 作为节点的一部分 */}
-        {showFloatingPanel && (
-          <FloatingButtons
-            nodeId={data.id}
-            onAddFrame={() => {
-              console.log('StoryNode: 点击新分镜按钮, 节点ID:', data.id);
-              if (data.onAddFrame) {
-                data.onAddFrame(data.id);
-              } else {
-                console.warn('StoryNode: onAddFrame 函数未定义');
-              }
-            }}
-            onExploreScene={() => {
-              console.log('StoryNode: 点击情景探索按钮, 节点ID:', data.id);
-              if (data.onExploreScene) {
-                data.onExploreScene(data.id);
-              } else {
-                console.warn('StoryNode: onExploreScene 函数未定义');
-              }
-            }}
-            onGenerateImage={() => {
-              console.log('StoryNode: 点击画面生成按钮, 节点ID:', data.id);
-              if (data.onGenerateImage) {
-                data.onGenerateImage(data.id);
-              } else {
-                console.warn('StoryNode: onGenerateImage 函数未定义');
-              }
-            }}
-            onDeleteFrame={() => {
-              console.log('StoryNode: 点击删除分镜按钮, 节点ID:', data.id);
-              if (data.onDeleteFrame) {
-                data.onDeleteFrame(data.id);
-              } else {
-                console.warn('StoryNode: onDeleteFrame 函数未定义');
-              }
-            }}
-            isVisible={true}
+      <motion.div
+        ref={nodeRef}
+        className={`
+          bg-white rounded-[20px]
+          ${selected ? 'ring-2 ring-blue-500' : ''}
+          shadow-[0_4px_12px_rgba(0,0,0,0.1)]
+          relative
+        `}
+        style={{
+          width: nodeState === NODE_STATES.COLLAPSED ? NODE_WIDTH.COLLAPSED + 'px' : NODE_WIDTH.EXPANDED + 'px',
+          transformOrigin: 'center center',
+        }}
+        animate={controls}
+        layout="position"
+        transition={{
+          type: "spring",
+          stiffness: 300,
+          damping: 30,
+          duration: 0.3
+        }}
+        data-state={nodeState}
+        data-expanded={nodeState !== NODE_STATES.COLLAPSED ? 'true' : 'false'}
+        data-node-id={data.id}
+        data-node-index={data.nodeIndex || 0}
+        data-node-width={nodeState === NODE_STATES.COLLAPSED ? NODE_WIDTH.COLLAPSED : NODE_WIDTH.EXPANDED}
+      >
+        {/* 展开状态时显示左右移动按钮 */}
+        {(nodeState !== NODE_STATES.COLLAPSED) && data.onMoveNode && (
+          <MoveNodeButtons
+            onMoveLeft={e => { e.stopPropagation(); data.onMoveNode(data.id, 'left'); }}
+            onMoveRight={e => { e.stopPropagation(); data.onMoveNode(data.id, 'right'); }}
           />
         )}
-      </div>
+        {/* 节点内容 - 不包含在z-index容器中 */}
+        {renderNodeContent()}
+
+        {/* 卡片下方的扩展编辑区域 */}
+        <div className="absolute left-0 right-0 w-full z-40">
+          <AnimatePresence>
+            {nodeState === NODE_STATES.IMAGE_EDITING && (
+              <motion.div
+                className="absolute top-0 left-0 w-full z-40"
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                style={{ pointerEvents: 'auto' }}
+              >
+                {/* 这里不再需要重复编辑区域，因为我们已经在renderImageEditingCard中实现了 */}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* 左侧感应区域 - 确保高z-index */}
+        <div
+          ref={leftSideRef}
+          className="absolute left-0 top-0 bottom-0 w-6 z-40"
+          onMouseEnter={() => setIsHoveringLeftButton(true)}
+          onMouseLeave={() => setIsHoveringLeftButton(false)}
+        />
+
+        {/* 左侧添加按钮 - 放在节点外部，保持高z-index */}
+        <div ref={leftButtonRef} className="absolute left-0 top-0 bottom-0 z-50 pointer-events-auto" style={{ width: '0' }}>
+          <AddNodeButton
+            position="left"
+            onClick={handleAddNode}
+            style={{
+              opacity: isHoveringLeftButton ? 1 : 0,
+              pointerEvents: isHoveringLeftButton ? 'auto' : 'none'
+            }}
+          />
+        </div>
+
+        {/* 右侧感应区域 - 确保高z-index */}
+        <div
+          ref={rightSideRef}
+          className="absolute right-0 top-0 bottom-0 w-6 z-40"
+          onMouseEnter={() => setIsHoveringRightButton(true)}
+          onMouseLeave={() => setIsHoveringRightButton(false)}
+        />
+
+        {/* 右侧添加按钮 - 放在节点外部，保持高z-index */}
+        <div ref={rightButtonRef} className="absolute right-0 top-0 bottom-0 z-50 pointer-events-auto" style={{ width: '0' }}>
+          <AddNodeButton
+            position="right"
+            onClick={handleAddNode}
+            style={{
+              opacity: isHoveringRightButton ? 1 : 0,
+              pointerEvents: isHoveringRightButton ? 'auto' : 'none'
+            }}
+          />
+        </div>
+      </motion.div>
+
+
       
       <AnimatePresence>
         {toasts.map((toast) => (
