@@ -99,49 +99,49 @@ const UserPersonas = ({ personas = [], selectedPersona, onSelectPersona, onUpdat
     }
   ];
 
-  // 生成故事气泡
+  // 生成故事气泡 - 使用统一的颜色系统
   const generateStoryBubbles = (persona) => {
     if (!persona) return [];
 
     const bubbles = [
-      // 场景气泡
+      // 场景气泡 - 使用绿色（场景相关）
       ...persona.usage_context.map((context, index) => ({
         id: `context-${index}`,
         type: 'context',
         text: context,
-        color: 'bg-amber-50 border-amber-200 text-amber-800',
+        color: 'bg-green-50 border-green-200 text-green-800',
         icon: '🏠'
       })),
-      // 痛点气泡
+      // 痛点气泡 - 使用红色（痛点相关）
       ...persona.domain_pain_points.map((pain, index) => ({
         id: `pain-${index}`,
-        type: 'pain',
+        type: 'pain_points',
         text: pain,
-        color: 'bg-rose-50 border-rose-200 text-rose-800',
+        color: 'bg-red-50 border-red-200 text-red-800',
         icon: '😰'
       })),
-      // 目标气泡
+      // 目标气泡 - 使用琥珀色（目标相关）
       ...persona.domain_goals_and_motivations.map((goal, index) => ({
         id: `goal-${index}`,
-        type: 'goal',
+        type: 'goals',
         text: goal,
-        color: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+        color: 'bg-amber-50 border-amber-200 text-amber-800',
         icon: '🎯'
       })),
-      // 行为气泡
+      // 行为气泡 - 使用石色（用户特征相关）
       ...persona.general_behavior.map((behavior, index) => ({
         id: `behavior-${index}`,
-        type: 'behavior',
+        type: 'user_traits',
         text: behavior,
-        color: 'bg-blue-50 border-blue-200 text-blue-800',
+        color: 'bg-green-50 border-green-200 text-green-800',
         icon: '🎭'
       })),
-      // 心理气泡
+      // 心理气泡 - 使用靛蓝色（情绪相关）
       ...persona.psychological_profile.map((psych, index) => ({
         id: `psych-${index}`,
-        type: 'psychology',
+        type: 'emotions',
         text: psych,
-        color: 'bg-purple-50 border-purple-200 text-purple-800',
+        color: 'bg-indigo-50 border-indigo-200 text-indigo-800',
         icon: '💭'
       }))
     ];

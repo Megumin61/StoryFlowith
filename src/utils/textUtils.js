@@ -1,34 +1,34 @@
 /**
- * ÎÄ±¾´¦Àí¹¤¾ßº¯Êý£¬°ïÖú´¦ÀíÖÐÎÄÎÄ±¾
+ * ï¿½Ä±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ßºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä±ï¿½
  */
 
-// ¼ì²é×Ö·û´®ÊÇ·ñ°üº¬ÖÐÎÄ
+// ï¿½ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 export const hasChinese = (text) => {
   if (!text) return false;
   return /[\u4e00-\u9fa5]/.test(text);
 };
 
-// È·±£ÎÄ±¾ÕýÈ·ÏÔÊ¾ÖÐÎÄ
+// È·ï¿½ï¿½ï¿½Ä±ï¿½ï¿½ï¿½È·ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½
 export const ensureChineseDisplay = (text) => {
   if (!text) return '';
   return text;
 };
 
-// ½â¾ö³£¼ûµÄÖÐÎÄÂÒÂëÎÊÌâ
+// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 export const fixChineseEncoding = (text) => {
   if (!text) return '';
   
-  // ´¦ÀíÒ»Ð©³£¼ûµÄÂÒÂëÄ£Ê½£¨Èç¹ûÐèÒª£©
+  // ï¿½ï¿½ï¿½ï¿½Ò»Ð©ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½
   return text;
 };
 
-// »ñÈ¡×Ö·û´®µÄ×Ö½Ú³¤¶È£¨Çø·ÖÖÐÓ¢ÎÄ£©
+// ï¿½ï¿½È¡ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö½Ú³ï¿½ï¿½È£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¢ï¿½Ä£ï¿½
 export const getByteLength = (text) => {
   if (!text) return 0;
   
   let length = 0;
   for (let i = 0; i < text.length; i++) {
-    // ÖÐÎÄ×Ö·ûÍ¨³£Õ¼ÓÃ3¸ö×Ö½Ú£¨UTF-8£©
+    // ï¿½ï¿½ï¿½ï¿½ï¿½Ö·ï¿½Í¨ï¿½ï¿½Õ¼ï¿½ï¿½3ï¿½ï¿½ï¿½Ö½Ú£ï¿½UTF-8ï¿½ï¿½
     if (text.charCodeAt(i) > 127) {
       length += 3;
     } else {
@@ -39,7 +39,7 @@ export const getByteLength = (text) => {
   return length;
 };
 
-// ½ØÈ¡¹Ì¶¨³¤¶ÈµÄ×Ö·û´®£¬¿¼ÂÇÖÐÎÄ
+// ï¿½ï¿½È¡ï¿½Ì¶ï¿½ï¿½ï¿½ï¿½Èµï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 export const truncateText = (text, maxLength, suffix = '...') => {
   if (!text) return '';
   if (text.length <= maxLength) return text;
@@ -47,7 +47,7 @@ export const truncateText = (text, maxLength, suffix = '...') => {
   return text.slice(0, maxLength) + suffix;
 };
 
-// ´òÓ¡ÖÐÎÄµ÷ÊÔÐÅÏ¢
+// ï¿½ï¿½Ó¡ï¿½ï¿½ï¿½Äµï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
 export const logChinese = (text) => {
   if (!text) return;
   

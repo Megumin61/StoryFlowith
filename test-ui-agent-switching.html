@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent 切换 UI 测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .agent-selector {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        .agent-option {
+            display: inline-block;
+            margin: 5px;
+            padding: 10px 15px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .agent-option:hover {
+            border-color: #007bff;
+            background: #e3f2fd;
+        }
+        .agent-option.selected {
+            border-color: #007bff;
+            background: #007bff;
+            color: white;
+        }
+        .agent-info {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #fff;
+        }
+        .agent-icon {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 40px;
+            margin-right: 10px;
+            color: white;
+            font-weight: bold;
+        }
+        .message-area {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #fff;
+            min-height: 200px;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+            background: #f0f0f0;
+        }
+        .message.user {
+            background: #e3f2fd;
+            margin-left: 20%;
+        }
+        .message.assistant {
+            background: #f3e5f5;
+            margin-right: 20%;
+        }
+        .input-area {
+            margin: 20px 0;
+        }
+        input[type="text"] {
+            width: 70%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-right: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .log {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #f8f9fa;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Agent 切换 UI 测试</h1>
+        
+        <div class="agent-selector">
+            <h3>选择 AI 助手:</h3>
+            <div id="agentOptions"></div>
+        </div>
+        
+        <div class="agent-info">
+            <h3>当前选择的 Agent:</h3>
+            <div id="currentAgentInfo"></div>
+        </div>
+        
+        <div class="message-area">
+            <h3>对话记录:</h3>
+            <div id="messages"></div>
+        </div>
+        
+        <div class="input-area">
+            <input type="text" id="messageInput" placeholder="输入消息..." />
+            <button onclick="sendMessage()">发送</button>
+            <button onclick="clearMessages()">清空</button>
+        </div>
+        
+        <div class="log">
+            <h3>操作日志:</h3>
+            <div id="log"></div>
+        </div>
+    </div>
+
+    <script>
+        // Agent 配置
+        const AGENTS = {
+            '7537689196866158618': {
+                id: '7537689196866158618',
+                name: '01 智能助手',
+                description: '通用智能问答助手',
+                color: '#1890ff',
+                icon: '🤖'
+            },
+            '7538458406407913522': {
+                id: '7538458407913522',
+                name: '02 故事脚本生成',
+                description: '专业的故事脚本创作助手',
+                color: '#52c41a',
+                icon: '📚'
+            },
+            '7540134398662967296': {
+                id: '7540134398662967296',
+                name: '03 故事脚本拆分',
+                description: '将长故事拆分为可执行片段',
+                color: '#fa8c16',
+                icon: '✂️'
+            },
+            '7540193191904690228': {
+                id: '7540193191904690228',
+                name: '04 情景探索',
+                description: '深入探索故事情景和细节',
+                color: '#722ed1',
+                icon: '🔍'
+            },
+            '7526396752845963291': {
+                id: '7526396752845963291',
+                name: '05 画面提示词生成',
+                description: '为AI绘画生成专业提示词',
+                color: '#eb2f96',
+                icon: '🎨'
+            }
+        };
+
+        let selectedAgent = '7537689196866158618';
+        let conversationId = null;
+
+        // 初始化页面
+        function initPage() {
+            renderAgentOptions();
+            updateCurrentAgentInfo();
+            addWelcomeMessage();
+            log('页面初始化完成');
+        }
+
+        // 渲染 Agent 选择器
+        function renderAgentOptions() {
+            const container = document.getElementById('agentOptions');
+            container.innerHTML = '';
+            
+            Object.entries(AGENTS).forEach(([id, agent]) => {
+                const option = document.createElement('div');
+                option.className = `agent-option ${id === selectedAgent ? 'selected' : ''}`;
+                option.innerHTML = `
+                    <span style="color: ${agent.color}">${agent.icon}</span>
+                    <span>${agent.name}</span>
+                `;
+                option.onclick = () => switchAgent(id);
+                container.appendChild(option);
+            });
+        }
+
+        // 切换 Agent
+        function switchAgent(newAgentId) {
+            const oldAgent = AGENTS[selectedAgent];
+            const newAgent = AGENTS[newAgentId];
+            
+            log(`🔄 切换 Agent: ${oldAgent.name} -> ${newAgent.name}`);
+            
+            selectedAgent = newAgentId;
+            conversationId = null; // 重置对话ID
+            
+            // 更新UI
+            renderAgentOptions();
+            updateCurrentAgentInfo();
+            resetConversation();
+            
+            log(`✅ Agent 切换完成: ${newAgent.name} (ID: ${newAgentId})`);
+        }
+
+        // 更新当前 Agent 信息
+        function updateCurrentAgentInfo() {
+            const agent = AGENTS[selectedAgent];
+            const container = document.getElementById('currentAgentInfo');
+            
+            container.innerHTML = `
+                <div class="agent-icon" style="background-color: ${agent.color}">
+                    ${agent.icon}
+                </div>
+                <div style="display: inline-block; vertical-align: top;">
+                    <h4 style="margin: 0 0 5px 0;">${agent.name}</h4>
+                    <p style="margin: 0; color: #666;">${agent.description}</p>
+                    <p style="margin: 5px 0 0 0; font-size: 12px; color: #999;">
+                        Bot ID: ${agent.id}
+                    </p>
+                </div>
+            `;
+        }
+
+        // 重置对话
+        function resetConversation() {
+            const agent = AGENTS[selectedAgent];
+            const messagesContainer = document.getElementById('messages');
+            
+            messagesContainer.innerHTML = `
+                <div class="message assistant">
+                    <strong>${agent.name}:</strong> 你好！我是${agent.name}，${agent.description}。请问有什么可以帮助您的吗？
+                </div>
+            `;
+            
+            log(`💬 对话已重置，当前 Agent: ${agent.name}`);
+        }
+
+        // 添加欢迎消息
+        function addWelcomeMessage() {
+            const agent = AGENTS[selectedAgent];
+            const messagesContainer = document.getElementById('messages');
+            
+            messagesContainer.innerHTML = `
+                <div class="message assistant">
+                    <strong>${agent.name}:</strong> 你好！我是${agent.name}，${agent.description}。请问有什么可以帮助您的吗？
+                </div>
+            `;
+        }
+
+        // 发送消息
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            const agent = AGENTS[selectedAgent];
+            
+            // 添加用户消息
+            addMessage('user', message);
+            
+            // 模拟 AI 回复
+            setTimeout(() => {
+                const reply = `我是${agent.name}，正在处理您的请求："${message}"。当前使用的 Bot ID 是 ${selectedAgent}。`;
+                addMessage('assistant', reply);
+            }, 1000);
+            
+            // 清空输入框
+            input.value = '';
+            
+            log(`📤 发送消息: "${message}" (Agent: ${agent.name})`);
+        }
+
+        // 添加消息到对话区域
+        function addMessage(role, content) {
+            const messagesContainer = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            messageDiv.innerHTML = `
+                <strong>${role === 'user' ? '用户' : AGENTS[selectedAgent].name}:</strong> ${content}
+            `;
+            messagesContainer.appendChild(messageDiv);
+            
+            // 滚动到底部
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // 清空消息
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+            log('🗑️ 对话记录已清空');
+        }
+
+        // 添加日志
+        function log(message) {
+            const logContainer = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            logContainer.appendChild(logEntry);
+            
+            // 滚动到底部
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', initPage);
+    </script>
+</body>
+</html> 

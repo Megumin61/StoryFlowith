@@ -63,7 +63,7 @@ export class UserPersonaManager {
         const researchData = document.getElementById('research-data-input')?.value;
         
         if (!researchData?.trim()) {
-            alert('ÇëÏÈÊäÈëÓÃ»§µ÷ÑÐ×ÊÁÏ');
+            alert('ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½');
             return;
         }
 
@@ -79,20 +79,20 @@ export class UserPersonaManager {
             this.renderPersonasList();
             this.showPersonaEditor(newPersona);
         } catch (error) {
-            console.error('AIÉú³ÉÓÃ»§½ÇÉ«Ê§°Ü:', error);
-            alert('AIÉú³ÉÊ§°Ü£¬Çë¼ì²éÍøÂçÁ¬½Ó»òÉÔºóÖØÊÔ');
+            console.error('AIï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½É«Ê§ï¿½ï¿½:', error);
+            alert('AIï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó»ï¿½ï¿½Ôºï¿½ï¿½ï¿½ï¿½ï¿½');
         }
     }
 
     async generatePersonaFromResearch(researchData) {
-        // ¼ò»¯´¦Àí£¬Êµ¼ÊÏîÄ¿ÖÐÓ¦¸ÃÁ¬½Óµ½ÕæÊµµÄAPI
+        // ï¿½ò»¯´ï¿½ï¿½ï¿½ï¿½ï¿½Êµï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½Óµï¿½ï¿½ï¿½Êµï¿½ï¿½API
         return {
-            name: 'Éú³ÉµÄÓÃ»§',
-            age: '25-35Ëê',
-            occupation: '»ùÓÚµ÷ÑÐÊý¾ÝµÄÖ°Òµ',
-            goals: '¸ù¾Ýµ÷ÑÐÊý¾Ý·ÖÎöµÃ³öµÄÄ¿±ê',
-            scenarios: '»ùÓÚµ÷ÑÐÊý¾ÝµÄÊ¹ÓÃ³¡¾°',
-            frustrations: 'µ÷ÑÐÖÐ·¢ÏÖµÄÖ÷ÒªÍ´µã',
+            name: 'ï¿½ï¿½ï¿½Éµï¿½ï¿½Ã»ï¿½',
+            age: '25-35ï¿½ï¿½',
+            occupation: 'ï¿½ï¿½ï¿½Úµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ýµï¿½Ö°Òµ',
+            goals: 'ï¿½ï¿½ï¿½Ýµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý·ï¿½ï¿½ï¿½ï¿½Ã³ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½',
+            scenarios: 'ï¿½ï¿½ï¿½Úµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ýµï¿½Ê¹ï¿½Ã³ï¿½ï¿½ï¿½',
+            frustrations: 'ï¿½ï¿½ï¿½ï¿½ï¿½Ð·ï¿½ï¿½Öµï¿½ï¿½ï¿½ÒªÍ´ï¿½ï¿½',
             techLevel: 'intermediate'
         };
     }
@@ -122,13 +122,13 @@ export class UserPersonaManager {
         }
 
         this.renderPersonasList();
-        alert('ÓÃ»§½ÇÉ«ÒÑ±£´æ');
+        alert('ï¿½Ã»ï¿½ï¿½ï¿½É«ï¿½Ñ±ï¿½ï¿½ï¿½');
     }
 
     deleteCurrentPersona() {
         if (!this.selectedPersonaId) return;
         
-        if (window.confirm('È·¶¨ÒªÉ¾³ýÕâ¸öÓÃ»§½ÇÉ«Âð£¿')) {
+        if (window.confirm('È·ï¿½ï¿½ÒªÉ¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½É«ï¿½ï¿½')) {
             this.personas = this.personas.filter(p => p.id !== this.selectedPersonaId);
             this.selectedPersonaId = null;
             this.renderPersonasList();
@@ -144,7 +144,7 @@ export class UserPersonaManager {
             listContent.innerHTML = `
                 <div class="text-center text-gray-500 py-4">
                     <i data-lucide="users" class="w-8 h-8 mx-auto mb-2"></i>
-                    <p class="text-sm">ÔÝÎÞÓÃ»§½ÇÉ«</p>
+                    <p class="text-sm">ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½É«</p>
                 </div>
             `;
             return;
@@ -157,8 +157,8 @@ export class UserPersonaManager {
                         <i data-lucide="user" class="w-5 h-5 text-blue-600"></i>
                     </div>
                     <div class="flex-grow">
-                        <h4 class="font-medium text-gray-900">${persona.name || 'Î´ÃüÃûÓÃ»§'}</h4>
-                        <p class="text-sm text-gray-500">${persona.occupation || 'Ö°ÒµÎ´ÉèÖÃ'}</p>
+                        <h4 class="font-medium text-gray-900">${persona.name || 'Î´ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½'}</h4>
+                        <p class="text-sm text-gray-500">${persona.occupation || 'Ö°ÒµÎ´ï¿½ï¿½ï¿½ï¿½'}</p>
                     </div>
                 </div>
             </div>
@@ -171,7 +171,7 @@ export class UserPersonaManager {
             });
         });
 
-        // °²È«µØµ÷ÓÃlucideÍ¼±ê´´½¨
+        // ï¿½ï¿½È«ï¿½Øµï¿½ï¿½ï¿½lucideÍ¼ï¿½ê´´ï¿½ï¿½
         if (typeof window !== 'undefined' && window.lucide && typeof window.lucide.createIcons === 'function') {
             window.lucide.createIcons();
         }

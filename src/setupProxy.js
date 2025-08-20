@@ -38,4 +38,17 @@ module.exports = function(app) {
       },
     })
   );
+  
+  // Coze API代理
+  app.use(
+    '/api/coze',
+    createProxyMiddleware({
+      target: 'https://api.coze.cn',
+      changeOrigin: true,
+      pathRewrite: {
+        '^/api/coze': '',
+      },
+      logLevel: 'debug',
+    })
+  );
 }; 

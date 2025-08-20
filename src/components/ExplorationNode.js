@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Edit2, X, ChevronDown, ChevronUp, Loader2, Plus, Check, 
   MessageSquare, Sparkles, GitFork, Settings, User
 } from 'lucide-react';
+import { getBubbleStyle } from '../utils/bubbleStyles';
 
 // 节点状态常量
 const NODE_STATES = {
@@ -57,8 +58,16 @@ const ExplorationNode = ({
   const [showBubblesPanel, setShowBubblesPanel] = useState(false);
   
   const nodeRef = useRef(null);
+  
+  // 添加防抖引用，避免频繁触发状态更新
+  const updateTimeoutRef = useRef(null);
+  const lastUpdateRef = useRef({
+    nodeState: nodeState,
+    showBubblesPanel: showBubblesPanel,
+    bubbleDragArea: bubbleDragArea
+  });
 
-  // 同步data.state的变化
+  // 同步data.state的变化 - 修复循环依赖
   useEffect(() => {
     console.log('ExplorationNode useEffect - data.state:', data.state, 'nodeState:', nodeState);
     if (data.state && data.state !== nodeState) {
@@ -70,27 +79,47 @@ const ExplorationNode = ({
         setNodeState(data.state);
       }
     }
-  }, [data.state]); // 移除nodeState依赖，避免循环更新
+  }, [data.state]); // 只依赖data.state，避免循环更新
 
-  // 同步本地状态到data - 添加防抖，避免频繁更新
-  useEffect(() => {
-    console.log('ExplorationNode syncing local state to data:', nodeState);
-    if (data.onDataChange) {
-      // 处理状态映射：EXPANDED -> editing
-      const mappedState = nodeState === NODE_STATES.EXPANDED ? 'editing' : nodeState;
-      data.onDataChange({
-        ...data,
-        state: mappedState,
-        explorationText,
-        branchCount,
-        generatedIdeas,
-        selectedIdeas,
-        bubbleDragArea,
-        explorationBubbles,
-        showBubblesPanel
-      });
+  // 防抖的状态更新函数
+  const debouncedUpdate = useCallback((updates) => {
+    if (updateTimeoutRef.current) {
+      clearTimeout(updateTimeoutRef.current);
     }
-  }, [nodeState, explorationText, branchCount, generatedIdeas, selectedIdeas, bubbleDragArea, explorationBubbles, showBubblesPanel]); // 移除data依赖
+    
+    updateTimeoutRef.current = setTimeout(() => {
+      if (data.onDataChange) {
+        // 处理状态映射：EXPANDED -> editing
+        const mappedState = nodeState === NODE_STATES.EXPANDED ? 'editing' : nodeState;
+        data.onDataChange({
+          ...data,
+          state: mappedState,
+          explorationText,
+          branchCount,
+          generatedIdeas,
+          selectedIdeas,
+          bubbleDragArea,
+          explorationBubbles,
+          showBubblesPanel
+        });
+      }
+    }, 100); // 100ms防抖延迟
+  }, [data, nodeState, explorationText, branchCount, generatedIdeas, selectedIdeas, bubbleDragArea, explorationBubbles, showBubblesPanel]);
+
+  // 同步本地状态到data - 使用防抖机制
+  useEffect(() => {
+    // 检查是否有实际变化
+    const hasChanged = 
+      lastUpdateRef.current.nodeState !== nodeState ||
+      lastUpdateRef.current.showBubblesPanel !== showBubblesPanel ||
+      JSON.stringify(lastUpdateRef.current.bubbleDragArea) !== JSON.stringify(bubbleDragArea);
+    
+    if (hasChanged) {
+      console.log('ExplorationNode syncing local state to data:', { nodeState, showBubblesPanel });
+      lastUpdateRef.current = { nodeState, showBubblesPanel, bubbleDragArea };
+      debouncedUpdate();
+    }
+  }, [nodeState, showBubblesPanel, bubbleDragArea, debouncedUpdate]);
 
   // 同步showBubblesPanel状态到节点数据，确保布局算法能正确计算宽度
   useEffect(() => {
@@ -98,22 +127,42 @@ const ExplorationNode = ({
       data.onUpdateNode(data.id, {
         showBubblesPanel: showBubblesPanel
       });
-      // 触发重新布局，因为宽度发生了变化
+      
+      // 触发重新布局，因为宽度发生了变化 - 添加防抖
       if (data.onNodeStateChange) {
-        // 使用requestAnimationFrame确保状态更新后再触发布局
-        requestAnimationFrame(() => {
+        if (updateTimeoutRef.current) {
+          clearTimeout(updateTimeoutRef.current);
+        }
+        
+        updateTimeoutRef.current = setTimeout(() => {
           data.onNodeStateChange(showBubblesPanel ? 'expanded' : 'collapsed');
-        });
+        }, 150); // 150ms防抖延迟，避免频繁触发布局
       }
     }
   }, [showBubblesPanel, data]);
 
-  // 新增：气泡拖拽区域处理函数
-  const handleBubbleDragAreaDrop = (e) => {
+  // 新增：气泡拖拽区域处理函数 - 添加防抖和错误处理
+  const handleBubbleDragAreaDrop = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
     console.log('ExplorationNode 气泡拖拽区域接收到拖拽事件');
     
+    // 如果节点是折叠状态，先展开节点
+    if (nodeState === NODE_STATES.COLLAPSED) {
+      console.log('ExplorationNode 节点处于折叠状态，先展开节点');
+      setNodeState(NODE_STATES.EXPANDED);
+      
+      // 延迟处理拖拽数据，确保节点展开后再添加气泡
+      setTimeout(() => {
+        processDroppedData(e);
+      }, 100);
+    } else {
+      processDroppedData(e);
+    }
+  }, [nodeState]);
+
+  // 处理拖拽数据的辅助函数
+  const processDroppedData = useCallback((e) => {
     try {
       let keywordData = e.dataTransfer.getData('keyword');
       let explorationBubbleData = e.dataTransfer.getData('explorationBubble');
@@ -188,15 +237,15 @@ const ExplorationNode = ({
     } catch (error) {
       console.log('气泡拖拽区域处理失败:', error);
     }
-  };
+  }, []);
 
   // 新增：删除气泡函数
-  const removeBubbleFromDragArea = (bubbleId) => {
+  const removeBubbleFromDragArea = useCallback((bubbleId) => {
     setBubbleDragArea(prev => ({
       ...prev,
       bubbles: prev.bubbles.filter(bubble => bubble.id !== bubbleId)
     }));
-  };
+  }, []);
 
   // 新增：生成探索气泡函数
   const generateExplorationBubbles = () => {
@@ -692,12 +741,18 @@ const ExplorationNode = ({
             onDragOver={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setBubbleDragArea(prev => ({ ...prev, isOver: true }));
+              // 添加防抖，避免频繁更新状态
+              if (!bubbleDragArea.isOver) {
+                setBubbleDragArea(prev => ({ ...prev, isOver: true }));
+              }
             }}
             onDragLeave={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setBubbleDragArea(prev => ({ ...prev, isOver: false }));
+              // 添加防抖，避免频繁更新状态
+              if (bubbleDragArea.isOver) {
+                setBubbleDragArea(prev => ({ ...prev, isOver: false }));
+              }
             }}
             onDrop={handleBubbleDragAreaDrop}
             onClick={(e) => {
@@ -727,108 +782,11 @@ const ExplorationNode = ({
                 gap: '6px'
               }}>
                 {bubbleDragArea.bubbles.map((bubble) => {
-                  // 根据气泡类型和原始颜色设置样式
-                  let bubbleStyle = {
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    padding: '4px 8px',
-                    borderRadius: '16px',
-                    fontSize: '11px',
-                    fontWeight: '500',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
+                  // 使用统一的气泡样式系统
+                  const bubbleStyle = {
+                    ...getBubbleStyle(bubble.type, bubble.originalColor),
+                    cursor: 'pointer'
                   };
-
-                  // 根据气泡类型和原始颜色设置样式
-                  if (bubble.originalColor) {
-                    // 保持原有颜色
-                    switch (bubble.originalColor) {
-                      case 'red':
-                        bubbleStyle = {
-                          ...bubbleStyle,
-                          backgroundColor: '#fef2f2',
-                          color: '#dc2626',
-                          border: '1px solid #fecaca'
-                        };
-                        break;
-                      case 'blue':
-                        bubbleStyle = {
-                          ...bubbleStyle,
-                          backgroundColor: '#eff6ff',
-                          color: '#2563eb',
-                          border: '1px solid #bfdbfe'
-                        };
-                        break;
-                      case 'green':
-                        bubbleStyle = {
-                          ...bubbleStyle,
-                          backgroundColor: '#f0fdf4',
-                          color: '#16a34a',
-                          border: '1px solid #bbf7d0'
-                        };
-                        break;
-                      case 'yellow':
-                        bubbleStyle = {
-                          ...bubbleStyle,
-                          backgroundColor: '#fefce8',
-                          color: '#ca8a04',
-                          border: '1px solid #fef08a'
-                        };
-                        break;
-                      case 'purple':
-                        bubbleStyle = {
-                          ...bubbleStyle,
-                          backgroundColor: '#faf5ff',
-                          color: '#9333ea',
-                          border: '1px solid #e9d5ff'
-                        };
-                        break;
-                      case 'orange':
-                        bubbleStyle = {
-                          ...bubbleStyle,
-                          backgroundColor: '#fff7ed',
-                          color: '#ea580c',
-                          border: '1px solid #fed7aa'
-                        };
-                        break;
-                      default:
-                        // 默认关键词气泡样式
-                        bubbleStyle = {
-                          ...bubbleStyle,
-                          backgroundColor: '#3b82f6',
-                          color: 'white'
-                        };
-                    }
-                  } else if (bubble.type === 'immediateFeelings') {
-                    bubbleStyle = {
-                      ...bubbleStyle,
-                      backgroundColor: '#fef2f2',
-                      color: '#dc2626',
-                      border: '1px solid #fecaca'
-                    };
-                  } else if (bubble.type === 'actionTendencies') {
-                    bubbleStyle = {
-                      ...bubbleStyle,
-                      backgroundColor: '#eff6ff',
-                      color: '#2563eb',
-                      border: '1px solid #bfdbfe'
-                    };
-                  } else if (bubble.type === 'goalAdjustments') {
-                    bubbleStyle = {
-                      ...bubbleStyle,
-                      backgroundColor: '#f0fdf4',
-                      color: '#16a34a',
-                      border: '1px solid #bbf7d0'
-                    };
-                  } else {
-                    // 默认关键词气泡样式
-                    bubbleStyle = {
-                      ...bubbleStyle,
-                      backgroundColor: '#3b82f6',
-                      color: 'white'
-                    };
-                  }
 
                   return (
                     <div
@@ -836,12 +794,15 @@ const ExplorationNode = ({
                       style={bubbleStyle}
                       onMouseEnter={(e) => {
                         if (bubble.type === 'keyword') {
+                          // 使用统一的蓝色系统
                           e.currentTarget.style.backgroundColor = '#2563eb';
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (bubble.type === 'keyword') {
-                          e.currentTarget.style.backgroundColor = '#3b82f6';
+                          // 恢复原始样式
+                          const originalStyle = getBubbleStyle(bubble.type, bubble.originalColor);
+                          e.currentTarget.style.backgroundColor = originalStyle.backgroundColor;
                         }
                       }}
                       onClick={(e) => {

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useLocale } from '../contexts/LocaleContext';
 
-function IdeaModal({ onGenerate, onTestStoryboard, onTestFalai, onTestExplorationNode, onTestStoryTree }) {
+function IdeaModal({ onGenerate, onTestStoryboard, onTestFalai, onTestExplorationNode, onTestStoryTree, onTestCoze }) {
   const [isLoading, setIsLoading] = useState(false);
   const [idea, setIdea] = useState('');
   const locale = useLocale();
@@ -32,6 +32,12 @@ function IdeaModal({ onGenerate, onTestStoryboard, onTestFalai, onTestExploratio
   const handleTestStoryTree = () => {
     if (onTestStoryTree) {
       onTestStoryTree();
+    }
+  };
+
+  const handleTestCoze = () => {
+    if (onTestCoze) {
+      onTestCoze();
     }
   };
 
@@ -98,6 +104,14 @@ function IdeaModal({ onGenerate, onTestStoryboard, onTestFalai, onTestExploratio
               onClick={handleTestStoryTree}
             >
               <span className="btn-text">分支关系测试</span>
+            </button>
+            
+            <button 
+              id="test-coze-btn" 
+              className="bg-indigo-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 transform hover:scale-105 flex items-center justify-center"
+              onClick={handleTestCoze}
+            >
+              <span className="btn-text">测试Coze</span>
             </button>
           </div>
         </div>

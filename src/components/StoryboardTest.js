@@ -7,16 +7,9 @@ import {
   Highlighter, Eye, Trash2, Check, Edit2, Loader2, Sparkles
 } from 'lucide-react';
 import KeywordSelector from './KeywordSelector';
-import PersonaDetail from './PersonaDetail';
-import NodeRenderer, { NODE_TYPES, getNodeType, createNode } from './NodeRenderer';
+import NodeRenderer, { NODE_TYPES, createNode } from './NodeRenderer';
+import { generatePersonaFromInterview, checkServiceHealth } from '../services/personaAgentAPI';
 
-// 导入Liblib API服务
-import LiblibAPI from '../services/liblib';
-// 导入FalAI API服务
-import FalAI from '../services/falai';
-import { liblibConfig } from '../config';
-// 导入图像工具函数
-import { getPublicImageUrl } from '../services/imageUtils';
 // 导入测试图像和风格图
 import testImage from '../images/test.png';
 import style1Image from '../images/style1.png';
@@ -24,10 +17,12 @@ import style2Image from '../images/style2.png';
 import style3Image from '../images/style3.png';
 import style4Image from '../images/style4.png';
 
-// 节点类型验证函数
+// 节点类型验证函数（暂时注释掉，避免未使用函数警告）
+/*
 const isValidNodeType = (nodeType) => {
   return Object.values(NODE_TYPES).includes(nodeType);
 };
+*/
 
 // 风格图的公网URL
 const styleUrls = {
@@ -69,7 +64,8 @@ const DYNAMIC_LAYOUT_CONFIG = {
   }
 };
 
-// 辅助函数：动态计算节点宽度 - 移到组件级别以便全局使用
+// 辅助函数：动态计算节点宽度 - 移到组件级别以便全局使用（暂时注释掉，避免未使用函数警告）
+/*
 const getNodeWidth = (node) => {
   if (!node) return DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.COLLAPSED;
   
@@ -91,13 +87,16 @@ const getNodeWidth = (node) => {
   const isExpanded = nodeState && nodeState.isExpanded;
   
   if (isExpanded) {
-    // 展开状态：基础宽度 + 面板宽度
-    return DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.EXPANDED + DYNAMIC_LAYOUT_CONFIG.PANEL_WIDTH;
+    // 展开状态：若显示面板需加上面板宽度
+    const showPanel = node.showFloatingPanel;
+    return DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.EXPANDED + (showPanel ? DYNAMIC_LAYOUT_CONFIG.PANEL_WIDTH : 0);
   } else {
-    // 折叠状态：只返回基础宽度
-    return DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.COLLAPSED;
+    // 折叠状态：若显示面板需加上面板宽度
+    const showPanel = node.showFloatingPanel;
+    return DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.COLLAPSED + (showPanel ? DYNAMIC_LAYOUT_CONFIG.PANEL_WIDTH : 0);
   }
 };
+*/
 
 // 获取节点的实际显示宽度（用于布局计算）
 const getNodeDisplayWidth = (node) => {
@@ -116,17 +115,33 @@ const getNodeDisplayWidth = (node) => {
     }
   }
   
-  // 对于普通分镜节点，需要考虑展开状态下的面板宽度
+  // 对于普通分镜节点，根据节点状态计算宽度
   const nodeState = nodeStatesRef[node.id];
-  const isExpanded = nodeState && nodeState.isExpanded;
+  let baseWidth;
   
-  if (isExpanded) {
-    // 展开状态：基础宽度 + 面板宽度
-    return DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.EXPANDED + DYNAMIC_LAYOUT_CONFIG.PANEL_WIDTH;
+  // 检查节点的实际状态
+  if (node.state === 'generating' || node.state === 'expanded' || node.state === 'editing') {
+    // 画面生成状态和展开状态：1200px (横向布局)
+    baseWidth = 1200;
   } else {
-    // 折叠状态：只返回基础宽度
-  return DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.COLLAPSED;
+    // 折叠状态：240px
+    baseWidth = 240;
   }
+  
+  // 如果显示悬浮面板，加上面板宽度
+    const showPanel = node.showFloatingPanel;
+  const totalWidth = baseWidth + (showPanel ? DYNAMIC_LAYOUT_CONFIG.PANEL_WIDTH : 0);
+  
+  console.log('🔧 节点宽度计算:', {
+    nodeId: node.id,
+    nodeState: node.state,
+    baseWidth,
+    showPanel,
+    panelWidth: showPanel ? DYNAMIC_LAYOUT_CONFIG.PANEL_WIDTH : 0,
+    totalWidth
+  });
+  
+  return totalWidth;
 };
 
 // 辅助函数：动态计算节点高度 - 移到组件级别以便全局使用
@@ -136,7 +151,7 @@ const getNodeHeight = (node) => {
   // 根据节点状态和内容计算高度 - 直接检查nodeStatesRef
   const nodeState = nodeStatesRef[node.id];
   if (nodeState && nodeState.isExpanded) {
-    return 250; // 展开状态
+    return 400; // 展开状态 - 调整为新的压缩布局高度
   }
   
   return 200; // 默认折叠状态
@@ -152,26 +167,35 @@ const calculateDynamicGap = (currentNode, currentIndex, allNodes) => {
   const nextNode = allNodes[currentIndex + 1];
   const isNextExploration = nextNode?.type === NODE_TYPES.EXPLORATION || nextNode?.explorationData?.isExplorationNode;
   
-  // 分镜节点之间的间距 - 缩小间距并保持恒定
+  // 分镜节点之间的间距 - 保持恒定间距
   if (!isCurrentExploration && !isNextExploration) {
-    // 两个都是分镜节点，使用更小的固定间距
-    gap = 50; // 分镜节点之间的固定间距（从-100缩小到-150）
+    // 两个都是分镜节点，使用固定间距
+    gap = 50;
   }
-  // 分镜节点与探索节点之间的间距 - 缩小间距并保持恒定
+  // 分镜节点与探索节点之间的间距
   else if (!isCurrentExploration && isNextExploration) {
     // 当前是分镜节点，下一个是探索节点
-    gap = 50; // 分镜节点到探索节点的固定间距（从100缩小到50）
+    gap = 50;
   }
-  // 探索节点与分镜节点之间的间距 - 缩小间距并保持恒定
+  // 探索节点与分镜节点之间的间距
   else if (isCurrentExploration && !isNextExploration) {
     // 当前是探索节点，下一个是分镜节点
-    gap = 60; // 探索节点到分镜节点的固定间距（从60缩小到30）
+    gap = 60;
   }
-  // 探索节点之间的间距 - 缩小间距并保持恒定
+  // 探索节点之间的间距
   else if (isCurrentExploration && isNextExploration) {
     // 两个都是探索节点
-    gap = 60; // 探索节点之间的固定间距（从80缩小到40）
+    gap = 60;
   }
+  
+  // 添加调试日志
+  console.log('🔧 动态间距计算:', {
+    currentNodeId: currentNode.id,
+    currentIndex,
+    isCurrentExploration,
+    isNextExploration,
+    calculatedGap: gap
+  });
   
   return gap;
 };
@@ -183,10 +207,9 @@ const layoutTree = (storyModel, selectedFrameId, getNodeById, getBranchById, upd
   
 
 
-  const { BASE_LEFT, BASE_TOP, HORIZONTAL_GAP, VERTICAL_GAP, BRANCH_LINE_GAP, PANEL_WIDTH } = DYNAMIC_LAYOUT_CONFIG;
+  const { BASE_LEFT, BASE_TOP, VERTICAL_GAP, BRANCH_LINE_GAP } = DYNAMIC_LAYOUT_CONFIG;
 
-  // 获取所有节点和分支
-  const allNodes = Object.values(storyModel.nodes);
+  // 获取所有分支
   const allBranches = Object.values(storyModel.branches);
 
   // 递归布局函数
@@ -194,10 +217,18 @@ const layoutTree = (storyModel, selectedFrameId, getNodeById, getBranchById, upd
     const branch = getBranchById(branchId);
     if (!branch) return { width: 0, height: 0 };
 
+    // 获取分支内的节点，并按照nodeIndex排序
     const branchNodes = branch.nodeIds
       .map(nodeId => getNodeById(nodeId))
       .filter(Boolean)
-      .sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
+      .sort((a, b) => {
+        // 优先使用nodeIndex，如果没有则使用在branch.nodeIds中的位置
+        const aIndex = a.nodeIndex !== undefined ? a.nodeIndex : branch.nodeIds.indexOf(a.id);
+        const bIndex = b.nodeIndex !== undefined ? b.nodeIndex : branch.nodeIds.indexOf(b.id);
+        return aIndex - bIndex;
+      });
+
+    console.log('🔧 分支节点排序结果:', branchNodes.map(n => ({ id: n.id, nodeIndex: n.nodeIndex, label: n.label })));
 
     if (branchNodes.length === 0) return { width: 0, height: 0 };
 
@@ -233,9 +264,6 @@ const layoutTree = (storyModel, selectedFrameId, getNodeById, getBranchById, upd
         node.connections = [];
       }
 
-      // 检查是否是分镜节点
-      const isStoryboardNode = node.type === 'storyboard' || !node.explorationData?.isExplorationNode;
-
       // 更新节点数据
       updateNode(node.id, {
         pos: node.pos,
@@ -253,9 +281,6 @@ const layoutTree = (storyModel, selectedFrameId, getNodeById, getBranchById, upd
       // 关键：下一个节点的起始位置 = 当前节点的起始位置 + 当前节点的显示宽度 + 间距
       // 这样确保节点展开时不影响后续节点的位置
       const nextNodeStartX = node.pos.x + nodeWidth + dynamicGap;
-      
-      // 获取节点状态
-      const nodeState = nodeStatesRef[node.id];
 
       // 第四步：更新currentX，使其成为下一个节点的起始位置
       currentX = nextNodeStartX;
@@ -282,7 +307,7 @@ const layoutTree = (storyModel, selectedFrameId, getNodeById, getBranchById, upd
         const totalChildBranches = childBranches.length;
         childBranches.forEach((childBranch, childIndex) => {
           const childY = childStartY + (childIndex - Math.floor(totalChildBranches / 2)) * BRANCH_LINE_GAP;
-          const childLayout = layoutBranch(childBranch.id, childStartX, childY, level + 1);
+          layoutBranch(childBranch.id, childStartX, childY, level + 1);
 
           // 更新探索节点的连接关系
           const childBranchStartNode = childBranch.nodeIds[0] ? getNodeById(childBranch.nodeIds[0]) : null;
@@ -327,39 +352,46 @@ const globalLayoutTree = () => {
 
 // 节点状态管理函数
 const updateNodeState = (nodeId, state, isExpanded) => {
-
-
+  // 更新节点状态引用
   nodeStatesRef[nodeId] = {
     state,
     isExpanded,
     lastUpdated: Date.now()
   };
   
-  // 触发动态重新布局 - 只重新布局后续节点
-  setTimeout(() => {
+  console.log('🔧 updateNodeState 被调用:', { nodeId, state, isExpanded });
+  
+  // 立即触发动态重新布局，确保节点间距保持动态不变
+  requestAnimationFrame(() => {
     const currentNode = globalGetNodeById ? globalGetNodeById(nodeId) : null;
-    const isExplorationNode = currentNode && (currentNode.type === NODE_TYPES.EXPLORATION || currentNode.explorationData?.isExplorationNode);
+    if (!currentNode) return;
 
-    // 情景探索节点尺寸变化会影响子分支起点，必须做全局递归布局
+    const isExplorationNode = currentNode.type === NODE_TYPES.EXPLORATION || currentNode.explorationData?.isExplorationNode;
+
     if (isExplorationNode) {
+      // 情景探索节点尺寸变化会影响子分支起点，必须做全局递归布局
+      console.log('🔧 探索节点状态变化，执行全局布局');
       globalLayoutTree();
-      return;
-    }
-
-    if (currentNode && currentNode.branchId) {
+    } else if (currentNode.branchId) {
+      // 分镜节点状态变化，使用智能重新布局保持后续节点间距
       const branch = globalGetBranchById ? globalGetBranchById(currentNode.branchId) : null;
       if (branch) {
+        console.log('🔧 分镜节点状态变化，执行智能重新布局');
         smartRelayout(branch, nodeId);
-        return;
+      } else {
+        console.log('🔧 无法找到分支，执行全局布局');
+        globalLayoutTree();
       }
-    }
-
+    } else {
     // 兜底：无法定位分支时执行全局布局
+      console.log('🔧 兜底：执行全局布局');
     globalLayoutTree();
-  }, 100); // 增加延迟时间，确保状态更新完成
+    }
+  });
 };
 
-// 从指定索引开始重新布局节点
+// 从指定索引开始重新布局节点（暂时注释掉，避免未使用函数警告）
+/*
 const relayoutNodesFromIndex = (branch, startIndex) => {
   if (!globalGetNodeById || !globalUpdateNode) return;
   
@@ -384,9 +416,6 @@ const relayoutNodesFromIndex = (branch, startIndex) => {
     if (prevNode && prevNode.pos && typeof prevNode.pos.x === 'number') {
       const newX = prevNode.pos.x + prevNodeWidth + dynamicGap;
       
-      // 检查是否是分镜节点
-      const isStoryboardNode = node.type === 'storyboard' || !node.explorationData?.isExplorationNode;
-      
       // 更新节点位置，但保持Y坐标不变
       globalUpdateNode(node.id, {
         pos: { x: newX, y: node.pos.y }
@@ -402,8 +431,9 @@ const relayoutNodesFromIndex = (branch, startIndex) => {
     }
   }
 };
+*/
 
-// 智能重新布局函数 - 保持节点左侧位置不变
+// 智能重新布局函数 - 保持节点间距动态不变
 const smartRelayout = (branch, changedNodeId) => {
   if (!globalGetNodeById || !globalUpdateNode) return;
   
@@ -416,30 +446,49 @@ const smartRelayout = (branch, changedNodeId) => {
   const changedNodeIndex = branchNodes.findIndex(node => node.id === changedNodeId);
   if (changedNodeIndex === -1) return;
   
-  // 只重新布局变更节点之后的节点
-  for (let i = changedNodeIndex + 1; i < branchNodes.length; i++) {
+  console.log('🔧 开始智能重新布局，变更节点索引:', changedNodeIndex, '分支节点数量:', branchNodes.length);
+  console.log('🔧 变更节点信息:', {
+    id: changedNodeId,
+    state: branchNodes[changedNodeIndex]?.state,
+    width: getNodeDisplayWidth(branchNodes[changedNodeIndex])
+  });
+  
+  // 从变更节点开始，重新计算所有后续节点的位置
+  for (let i = changedNodeIndex; i < branchNodes.length; i++) {
     const node = branchNodes[i];
+    
+    if (i === 0) {
+      // 第一个节点保持基准位置
+      if (node.baseX !== undefined) {
+        const newX = node.baseX;
+        if (Math.abs(node.pos.x - newX) > 1) {
+          globalUpdateNode(node.id, {
+            pos: { x: newX, y: node.pos.y }
+          });
+          console.log('🔧 更新第一个节点位置:', node.id, '->', newX);
+        }
+      }
+    } else {
+      // 其他节点基于前一个节点的位置和宽度计算
     const prevNode = branchNodes[i - 1];
     
     if (prevNode && prevNode.pos && typeof prevNode.pos.x === 'number') {
-      const prevNodeWidth = getNodeDisplayWidth(prevNode); // 使用显示宽度，避免展开时影响布局
+        const prevNodeWidth = getNodeDisplayWidth(prevNode); // 使用实时显示宽度
       const dynamicGap = calculateDynamicGap(prevNode, i - 1, branchNodes);
       const newX = prevNode.pos.x + prevNodeWidth + dynamicGap;
       
-      // 检查是否是分镜节点
-      const isStoryboardNode = node.type === 'storyboard' || !node.explorationData?.isExplorationNode;
-      
       // 只有当位置真正需要改变时才更新
       if (Math.abs(node.pos.x - newX) > 1) {
-        const oldX = node.pos.x;
         globalUpdateNode(node.id, {
           pos: { x: newX, y: node.pos.y }
         });
-        
-
+          console.log('🔧 更新节点位置:', node.id, '->', newX, '前一个节点宽度:', prevNodeWidth, '间距:', dynamicGap);
       }
     }
   }
+  }
+  
+  console.log('🔧 智能重新布局完成');
 };
 
 // 初始化节点状态函数
@@ -454,19 +503,21 @@ const initializeNodeState = (nodeId) => {
   return nodeStatesRef[nodeId];
 };
 
-// 设置节点的基准位置
+// 设置节点的基准位置（暂时注释掉，避免未使用函数警告）
+/*
 const setNodeBaseX = (nodeId, baseX) => {
   if (globalUpdateNode) {
     globalUpdateNode(nodeId, { baseX });
   }
 };
 
-// 动态重新布局函数
+// 动态重新布局函数（暂时注释掉，避免未使用函数警告）
 const triggerDynamicRelayout = () => {
   setTimeout(() => {
     globalLayoutTree();
   }, 100);
 };
+*/
 
   // 设置全局 layoutTree 参数的函数
   const setLayoutTreeParams = (storyModel, selectedFrameId, getNodeById, getBranchById, updateNode) => {
@@ -479,174 +530,10 @@ const triggerDynamicRelayout = () => {
 
 
 
-// 中间页面组件 - 参考RefinementPage设计
-function StoryboardPreparationPage({ initialStoryText, onComplete }) {
-  const [storyScript, setStoryScript] = useState(initialStoryText || '');
-  const [selectedStyle, setSelectedStyle] = useState('style1');
-  const [frameCount, setFrameCount] = useState(5);
-  const [settings, setSettings] = useState({
-    aspectRatio: '16:9',
-    model: 'pro',
-    enableConnections: true,
-    enableBranching: true
-  });
-
-  const styles = [
-    { id: 'style1', label: '动漫风格' },
-    { id: 'style2', label: '写实风格' },
-    { id: 'style3', label: '水彩风格' },
-    { id: 'style4', label: '插画风格' },
-  ];
-
-  const handleStartCanvas = () => {
-    const config = {
-      storyScript,
-      selectedStyle,
-      frameCount,
-      settings
-    };
-    onComplete(config);
-  };
-
-  return (
-    <motion.div
-      className="absolute inset-0 bg-gray-50 z-40 p-4 sm:p-6 lg:p-8 overflow-y-auto"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.5 }}
-    >
-      <div className="max-w-6xl mx-auto">
-        <div className="bg-white rounded-2xl shadow-lg p-8">
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-gray-900 mb-2">故事板配置</h1>
-          <p className="text-lg text-gray-600 mb-8">配置您的故事板画布设置和风格偏好</p>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* 故事脚本配置 */}
-            <div className="bg-gray-50 rounded-xl p-6 border">
-              <h2 className="text-2xl font-semibold text-gray-800 mb-4 flex items-center">
-                <User className="mr-3 text-blue-500" />
-                故事脚本
-              </h2>
-              <textarea
-                className="w-full h-64 p-4 bg-white border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out text-base font-mono"
-                value={storyScript}
-                onChange={(e) => setStoryScript(e.target.value)}
-                placeholder="请输入您的故事脚本或描述..."
-              />
-
-              <div className="mt-4 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">分镜数量</label>
-                  <input
-                    type="number"
-                    min="3"
-                    max="10"
-                    value={frameCount}
-                    onChange={(e) => setFrameCount(Number(e.target.value))}
-                    className="w-24 p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* 风格和设置配置 */}
-            <div className="bg-gray-50 rounded-xl p-6 border">
-              <h2 className="text-2xl font-semibold text-gray-800 mb-4 flex items-center">
-                <Image className="mr-3 text-green-500" />
-                视觉风格
-              </h2>
-
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">选择参考风格</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {styles.map(style => (
-                      <div
-                        key={style.id}
-                        className={`cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${selectedStyle === style.id
-                            ? 'border-blue-500 ring-2 ring-blue-200'
-                            : 'border-gray-200 hover:border-gray-300'
-                          }`}
-                        onClick={() => setSelectedStyle(style.id)}
-                      >
-                        <div className="aspect-video relative">
-                          <img
-                            src={styleImages[style.id]}
-                            alt={style.label}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.target.onerror = null;
-                              e.target.src = testImage;
-                            }}
-                          />
-                          {selectedStyle === style.id && (
-                            <div className="absolute top-2 right-2">
-                              <div className="bg-blue-500 text-white rounded-full p-1">
-                                <CheckCircle className="h-4 w-4" />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                        <div className="p-2 text-center">
-                          <span className="text-sm font-medium text-gray-700">{style.label}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">画布设置</label>
-                  <div className="space-y-3">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="enableConnections"
-                        checked={settings.enableConnections}
-                        onChange={(e) => setSettings(prev => ({ ...prev, enableConnections: e.target.checked }))}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="enableConnections" className="ml-2 text-sm text-gray-600">启用分镜连线</label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="enableBranching"
-                        checked={settings.enableBranching}
-                        onChange={(e) => setSettings(prev => ({ ...prev, enableBranching: e.target.checked }))}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="enableBranching" className="ml-2 text-sm text-gray-600">启用分支功能</label>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8 flex justify-between">
-            <button
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              返回
-            </button>
-            <button
-              onClick={handleStartCanvas}
-              className="px-8 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center"
-            >
-              <span>开始创建画布</span>
-              <ArrowLeft className="ml-2 h-4 w-4 rotate-180" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
+// 中间页面组件 - 已被删除，避免语法错误
 
 // 左侧边栏组件 - 重构为支持分支结构
-function StoryboardTree({ storyModel, selectedFrameId, onFrameSelect }) {
+function StoryboardTree({ storyModel, selectedFrameId, onFrameSelect, onFrameReorder, onDragStateUpdate, draggedNodeId, dragTargetIndex }) {
   const renderStoryTree = () => {
     if (!storyModel || !storyModel.branches || !storyModel.nodes) {
       return null;
@@ -656,24 +543,28 @@ function StoryboardTree({ storyModel, selectedFrameId, onFrameSelect }) {
     const rootBranches = Object.values(storyModel.branches).filter(branch => !branch.parentBranchId);
     
     if (rootBranches.length === 0) {
-    return (
+      return (
         <div className="text-center py-4 text-gray-500">
           <span className="text-xs">暂无故事结构</span>
-              </div>
+        </div>
       );
     }
 
-                    return (
+    return (
       <div className="space-y-4">
         {rootBranches.map((rootBranch, index) => (
           <BranchTimeline
             key={rootBranch.id}
             branch={rootBranch}
             storyModel={storyModel}
-                        selectedFrameId={selectedFrameId}
-                        onFrameSelect={onFrameSelect}
+            selectedFrameId={selectedFrameId}
+            onFrameSelect={onFrameSelect}
+            onFrameReorder={onFrameReorder}
             branchIndex={index}
-                      />
+            onDragStateUpdate={onDragStateUpdate}
+            draggedNodeId={draggedNodeId}
+            dragTargetIndex={dragTargetIndex}
+          />
         ))}
       </div>
     );
@@ -682,8 +573,12 @@ function StoryboardTree({ storyModel, selectedFrameId, onFrameSelect }) {
   return renderStoryTree();
 }
 
-function BranchTimeline({ branch, storyModel, selectedFrameId, onFrameSelect, branchIndex }) {
+function BranchTimeline({ branch, storyModel, selectedFrameId, onFrameSelect, onFrameReorder, branchIndex, onDragStateUpdate, draggedNodeId, dragTargetIndex }) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [dragOverNodeId, setDragOverNodeId] = useState(null);
+  const [dragOverPosition, setDragOverPosition] = useState(null); // 'before' | 'after' | null
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  // 使用统一的拖拽状态，与左侧边栏保持一致
 
   const toggleExpand = (e) => {
     e.stopPropagation();
@@ -705,25 +600,181 @@ function BranchTimeline({ branch, storyModel, selectedFrameId, onFrameSelect, br
   const branchNodes = uniqueNodeIds
     .map(nodeId => storyModel.nodes[nodeId])
     .filter(Boolean)
+    .filter(node => node && node.id) // 确保节点有效
     .sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
 
-    const renderNodeRow = (node, indexInBranch) => {
+  const renderNodeRow = (node, indexInBranch) => {
     const isExploration = node.type === NODE_TYPES.EXPLORATION || node.explorationData?.isExplorationNode;
     const isSelected = selectedFrameId === node.id;
     const icon = isExploration ? '🔍' : '📽️';
     const label = node.label || (isExploration ? '情景探索' : `分镜 ${(node.nodeIndex || 0) + 1}`);
+
+    const handleDragStart = (e) => {
+      e.stopPropagation();
+      e.dataTransfer.setData('text/plain', node.id);
+      e.dataTransfer.effectAllowed = 'move';
+      
+      // 通知父组件拖拽开始
+      if (onDragStateUpdate) {
+        onDragStateUpdate(node.id, true);
+      }
+      
+      // 添加拖拽时的视觉反馈
+      e.currentTarget.style.transform = 'scale(0.95) rotate(2deg)';
+      e.currentTarget.style.transition = 'all 0.2s ease';
+      
+      // 设置拖拽图像
+      const dragImage = e.currentTarget.cloneNode(true);
+      dragImage.style.opacity = '0.8';
+      dragImage.style.transform = 'scale(0.9)';
+      document.body.appendChild(dragImage);
+      e.dataTransfer.setDragImage(dragImage, 0, 0);
+      
+      // 延迟移除拖拽图像
+      setTimeout(() => {
+        if (document.body.contains(dragImage)) {
+          document.body.removeChild(dragImage);
+        }
+      }, 0);
+    };
+
+    const handleDragOver = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      
+      if (isExploration) return; // 探索节点不可拖拽
+
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mouseY = e.clientY;
+      const nodeCenterY = rect.top + rect.height / 2;
+      
+      // 判断拖拽位置：在节点上方还是下方
+      if (mouseY < nodeCenterY) {
+        setDragOverNodeId(node.id);
+        setDragOverPosition('before');
+        setDragOverIndex(indexInBranch);
+        
+        // 通知父组件拖拽目标位置
+        if (onDragStateUpdate) {
+          onDragStateUpdate(draggedNodeId, true, indexInBranch);
+        }
+      } else {
+        setDragOverNodeId(node.id);
+        setDragOverPosition('after');
+        setDragOverIndex(indexInBranch + 1);
+        
+        // 通知父组件拖拽目标位置
+        if (onDragStateUpdate) {
+          onDragStateUpdate(draggedNodeId, true, indexInBranch + 1);
+        }
+      }
+    };
+
+    const handleDrop = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      if (isExploration) return; // 探索节点不可拖拽
+      
+      const draggedNodeId = e.dataTransfer.getData('text/plain');
+      if (draggedNodeId && draggedNodeId !== node.id) {
+        // 调用父组件的拖拽排序函数，传递插入位置
+        if (onFrameReorder) {
+          const insertIndex = dragOverPosition === 'before' ? indexInBranch : indexInBranch + 1;
+          onFrameReorder(draggedNodeId, insertIndex);
+        }
+      }
+      
+      // 清除拖拽状态
+      setDragOverNodeId(null);
+      setDragOverPosition(null);
+      setDragOverIndex(null);
+    };
+
+    const handleDragLeave = (e) => {
+      // 清除拖拽悬停状态
+      setDragOverNodeId(null);
+      setDragOverPosition(null);
+      setDragOverIndex(null);
+      
+      // 通知父组件清除拖拽目标位置
+      if (onDragStateUpdate && draggedNodeId) {
+        onDragStateUpdate(draggedNodeId, true, null);
+      }
+    };
+
+    const handleDragEnd = (e) => {
+      // 恢复拖拽元素的样式
+      if (e.currentTarget) {
+        e.currentTarget.style.transform = '';
+        e.currentTarget.style.transition = '';
+      }
+      
+      // 通知父组件拖拽结束
+      if (onDragStateUpdate) {
+        onDragStateUpdate(null, false);
+      }
+      
+      setDragOverNodeId(null);
+      setDragOverPosition(null);
+      setDragOverIndex(null);
+    };
+
+    // 渲染拖拽插入位置指示器
+    const renderDropIndicator = () => {
+      if (dragOverNodeId === node.id && dragOverPosition) {
+        const indicatorClass = dragOverPosition === 'before' 
+          ? 'absolute -top-1 left-0 right-0 h-1 bg-blue-500 rounded-full z-10'
+          : 'absolute -bottom-1 left-0 right-0 h-1 bg-blue-500 rounded-full z-10';
+        
+        return (
+          <div className={indicatorClass} />
+        );
+      }
+      return null;
+    };
+
     return (
-      <div key={node.id} className="node-item">
+      <div 
+        key={node.id} 
+        className={`node-item group relative ${!isExploration ? 'cursor-move' : ''}`}
+        draggable={!isExploration} // 只有分镜节点可以拖拽
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onDragLeave={handleDragLeave}
+        onDragEnd={handleDragEnd}
+      >
+        {/* 拖拽插入位置指示器 */}
+        {renderDropIndicator()}
+        
         <div
-          className={`node-content w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer transition-colors ${isSelected ? 'bg-blue-100 border border-blue-500' : ''}`}
+          className={`node-content w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 transition-all duration-200 ${
+            isSelected ? 'bg-blue-100 border border-blue-500' : ''
+          } ${
+            dragOverNodeId === node.id ? 'bg-blue-50 border-2 border-blue-300 shadow-md scale-105' : ''
+          } ${
+            draggedNodeId === node.id ? 'opacity-50 scale-95 transform' : ''
+          } ${
+            !isExploration ? 'cursor-pointer' : ''
+          }`}
           onClick={() => onFrameSelect(node.id)}
         >
           <div className="w-4 h-4 flex-shrink-0">
             <span className="text-xs align-middle">{icon}</span>
-        </div>
+          </div>
           <span className="flex-grow text-sm text-gray-800 truncate min-w-0">{label}</span>
+          {/* 拖拽指示器 */}
+          {!isExploration && (
+            <div className="w-3 h-3 flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors group-hover:scale-110">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
+              </svg>
             </div>
+          )}
         </div>
+      </div>
     );
   };
 
@@ -743,9 +794,9 @@ function BranchTimeline({ branch, storyModel, selectedFrameId, onFrameSelect, br
         <div className="flex items-center gap-2">
           <div className={`w-4 h-4 flex-shrink-0 ${branch.level === 0 ? 'text-blue-500' : 'text-yellow-500'}`}>
             {branch.level === 0 ? <Folder className="w-4 h-4" /> : <CornerDownRight className="w-4 h-4" />}
-                      </div>
+          </div>
           <span className="font-semibold">{getBranchName()}</span>
-                  </div>
+        </div>
         <ChevronDown className={`w-4 h-4 transition-transform ${!isExpanded ? 'rotate-180' : ''}`} />
       </div>
 
@@ -753,9 +804,84 @@ function BranchTimeline({ branch, storyModel, selectedFrameId, onFrameSelect, br
         <div className="pl-3 pt-2">
           {/* 本分支纵向节点列表 */}
           <div className="space-y-1">
+            {/* 拖拽到分支开头的提示区域 */}
+            {branchNodes.length > 0 && (
+              <div
+                className={`h-2 rounded transition-all duration-200 ${
+                  dragTargetIndex === 0 ? 'bg-blue-200 border-2 border-blue-400' : 'bg-transparent'
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = 'move';
+                  setDragOverNodeId(null);
+                  setDragOverPosition(null);
+                  setDragOverIndex(0);
+                  // 通知父组件拖拽目标位置
+                  if (onDragStateUpdate) {
+                    onDragStateUpdate(draggedNodeId, true, 0);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const draggedNodeId = e.dataTransfer.getData('text/plain');
+                  if (draggedNodeId && onFrameReorder) {
+                    onFrameReorder(draggedNodeId, 0);
+                  }
+                  setDragOverIndex(null);
+                }}
+                onDragLeave={() => {
+                  setDragOverIndex(null);
+                  // 通知父组件清除拖拽目标位置
+                  if (onDragStateUpdate && draggedNodeId) {
+                    onDragStateUpdate(draggedNodeId, true, null);
+                  }
+                }}
+              />
+            )}
+            
             {branchNodes.map((node, idx) => (
               <div key={node.id}>
                 {renderNodeRow(node, idx)}
+                
+                {/* 节点之间的拖拽插入区域 */}
+                {idx < branchNodes.length - 1 && (
+                  <div
+                                    className={`h-2 rounded transition-all duration-200 ${
+                  dragTargetIndex === idx + 1 ? 'bg-blue-200 border-2 border-blue-400' : 'bg-transparent'
+                }`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = 'move';
+                      setDragOverNodeId(null);
+                      setDragOverPosition(null);
+                      setDragOverIndex(idx + 1);
+                      // 通知父组件拖拽目标位置
+                      if (onDragStateUpdate) {
+                        onDragStateUpdate(draggedNodeId, true, idx + 1);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const draggedNodeId = e.dataTransfer.getData('text/plain');
+                      if (draggedNodeId && onFrameReorder) {
+                        onFrameReorder(draggedNodeId, idx + 1);
+                      }
+                      setDragOverIndex(null);
+                    }}
+                    onDragLeave={() => {
+                      setDragOverIndex(null);
+                      // 通知父组件清除拖拽目标位置
+                      if (onDragStateUpdate && draggedNodeId) {
+                        onDragStateUpdate(draggedNodeId, true, null);
+                      }
+                    }}
+                  />
+                )}
+                
                 {/* 若为情景探索节点，则在此节点下显示其子分支（只显示差异部分） */}
                 {(node.type === NODE_TYPES.EXPLORATION || node.explorationData?.isExplorationNode) && (
                   (() => {
@@ -766,22 +892,60 @@ function BranchTimeline({ branch, storyModel, selectedFrameId, onFrameSelect, br
                       <div className="mt-1 pl-4 border-l-2 border-purple-200 space-y-2">
                         {childBranches.map((childBranch, childIdx) => (
                           <BranchTimeline
-                        key={childBranch.id}
-                        branch={childBranch}
-                        storyModel={storyModel}
-                        selectedFrameId={selectedFrameId}
-                        onFrameSelect={onFrameSelect}
+                            key={childBranch.id}
+                            branch={childBranch}
+                            storyModel={storyModel}
+                            selectedFrameId={selectedFrameId}
+                            onFrameSelect={onFrameSelect}
+                            onFrameReorder={onFrameReorder}
                             branchIndex={childIdx}
-                      />
-                    ))}
-                  </div>
+                          />
+                        ))}
+                      </div>
                     );
                   })()
                 )}
               </div>
             ))}
+            
+            {/* 拖拽到分支末尾的提示区域 */}
+            {branchNodes.length > 0 && (
+              <div
+                className={`h-2 rounded transition-all duration-200 ${
+                  dragTargetIndex === branchNodes.length ? 'bg-blue-200 border-2 border-blue-400' : 'bg-transparent'
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = 'move';
+                  setDragOverNodeId(null);
+                  setDragOverPosition(null);
+                  setDragOverIndex(branchNodes.length);
+                  // 通知父组件拖拽目标位置
+                  if (onDragStateUpdate) {
+                    onDragStateUpdate(draggedNodeId, true, branchNodes.length);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const draggedNodeId = e.dataTransfer.getData('text/plain');
+                  if (draggedNodeId && onFrameReorder) {
+                    onFrameReorder(draggedNodeId, branchNodes.length);
+                  }
+                  setDragOverIndex(null);
+                }}
+                onDragLeave={() => {
+                  setDragOverIndex(null);
+                  // 通知父组件清除拖拽目标位置
+                  if (onDragStateUpdate && draggedNodeId) {
+                    onDragStateUpdate(draggedNodeId, true, null);
+                  }
+                }}
+              />
+            )}
+          </div>
         </div>
-      </div>
       )}
     </div>
   );
@@ -830,7 +994,12 @@ function StoryboardCanvas({
 
     const handleMouseDown = (e) => {
       // 如果点击的是节点或其子元素，不进行拖拽
-      if (e.target.closest('.story-frame') || e.target.closest('.exploration-panel')) {
+      if (
+        e.target.closest('[data-node-id]') ||
+        e.target.closest('.story-frame') ||
+        e.target.closest('.exploration-panel') ||
+        e.target.closest('.floating-buttons')
+      ) {
         return;
       }
 
@@ -838,6 +1007,17 @@ function StoryboardCanvas({
       if (e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea')) {
         return;
       }
+
+      // 点击画布空白处，将所有展开的分镜节点回到折叠状态
+      const allNodes = Object.values(storyModel?.nodes || {});
+      allNodes.forEach(node => {
+        if (node.state === 'expanded' || node.state === 'editing' || node.state === 'generating') {
+          // 调用节点状态变化处理函数，将节点状态改为折叠
+          if (onNodeStateChange) {
+            onNodeStateChange(node.id, 'collapsed');
+          }
+        }
+      });
 
       isPanningRef.current = true;
       canvasContainer.classList.add('grabbing');
@@ -1117,9 +1297,12 @@ function StoryboardCanvas({
 
   // 悬浮按钮事件处理函数 - 使用新的树状数据结构
   const handleAddFrame = (nodeId) => {
+    console.log('🔧 handleAddFrame 被调用，节点ID:', nodeId);
+    
     // 获取目标节点
     const targetNode = getNodeById(nodeId);
     if (!targetNode) {
+      console.warn('❌ 目标节点不存在:', nodeId);
       return;
     }
 
@@ -1127,22 +1310,42 @@ function StoryboardCanvas({
     const targetBranchId = targetNode.branchId;
     const targetBranch = getBranchById(targetBranchId);
     if (!targetBranch) {
+      console.warn('❌ 目标分支不存在:', targetBranchId);
       return;
     }
 
-    // 计算新节点的基准位置
-    const targetNodeWidth = getNodeDisplayWidth(targetNode); // 使用显示宽度确保一致性
-    const dynamicGap = calculateDynamicGap(targetNode, targetBranch.nodeIds.indexOf(nodeId), targetBranch.nodeIds.map(id => getNodeById(id)).filter(Boolean));
+    console.log('🔧 目标节点信息:', {
+      id: targetNode.id,
+      branchId: targetBranchId,
+      currentIndex: targetBranch.nodeIds.indexOf(nodeId),
+      totalNodes: targetBranch.nodeIds.length
+    });
+
+    // 计算插入位置 - 插入到当前节点之后
+    const currentIndex = targetBranch.nodeIds.indexOf(nodeId);
+    const insertIndex = currentIndex + 1;
+    
+    // 计算新节点的基准位置 - 插入到当前节点右侧
+    const targetNodeWidth = getNodeDisplayWidth(targetNode);
+    const dynamicGap = calculateDynamicGap(targetNode, currentIndex, targetBranch.nodeIds.map(id => getNodeById(id)).filter(Boolean));
     const newBaseX = targetNode.pos.x + targetNodeWidth + dynamicGap;
+
+    console.log('🔧 新节点位置计算:', {
+      targetNodeWidth,
+      dynamicGap,
+      newBaseX,
+      insertIndex
+    });
 
     // 使用节点工厂函数创建新分镜
     const newNode = createNode(NODE_TYPES.STORY_FRAME, {
       branchId: targetBranchId,
-      nodeIndex: targetBranch.nodeIds.length,
-      label: `分镜 ${targetBranch.nodeIds.length + 1}`,
+      nodeIndex: insertIndex,
+      label: `分镜 ${insertIndex + 1}`,
       styleName: targetNode.styleName || 'style1',
       connections: [targetNode.id],
-      baseX: newBaseX, // 设置基准位置
+      baseX: newBaseX,
+      pos: { x: newBaseX, y: targetNode.pos.y }, // 设置初始位置
       ...(targetBranch.level > 0 ? {
         branchData: {
           branchName: targetBranch.name,
@@ -1155,11 +1358,13 @@ function StoryboardCanvas({
       } : {})
     });
 
+    console.log('🔧 新节点创建完成:', newNode);
+
     // 添加新节点到数据模型
     addNode(newNode);
 
-    // 将新节点添加到目标分支中，确保正确添加到对应分支的nodeIds数组
-    addNodeToBranch(targetBranchId, newNode.id);
+    // 将新节点插入到目标分支中，插入到当前节点之后
+    addNodeToBranch(targetBranchId, newNode.id, insertIndex);
 
     // 更新目标节点的连接关系，连接到新创建的分镜节点
     updateNode(nodeId, {
@@ -1168,11 +1373,15 @@ function StoryboardCanvas({
 
     // 调用父组件的添加分镜函数（如果存在）
     if (onAddNode) {
-      onAddNode(newNode, targetBranch.nodeIds.length);
+      onAddNode(newNode, insertIndex);
     }
 
-    // 重新排布节点
-    setTimeout(() => globalLayoutTree(), 100);
+    // 立即重新排布节点，确保新节点位置正确
+    console.log('🔧 开始重新布局...');
+    setTimeout(() => {
+      globalLayoutTree();
+      console.log('🔧 布局完成');
+    }, 50);
   };
 
   // 处理生成分支的函数
@@ -1189,32 +1398,60 @@ function StoryboardCanvas({
   return (
     <div id="canvas-container" className="flex-grow h-full overflow-hidden cursor-grab relative" ref={canvasContainerRef}>
       <div id="canvas-world" className="absolute top-0 left-0" ref={canvasWorldRef}>
-        <svg id="canvas-connections" style={{ position: 'absolute', top: 0, left: 0, width: '5000px', height: '5000px', pointerEvents: 'none' }}></svg>
+        <svg id="canvas-connections" style={{ 
+          position: 'absolute', 
+          top: 0, 
+          left: 0, 
+          width: '5000px', 
+          height: '5000px', 
+          pointerEvents: 'none',
+          zIndex: 0 // 确保连接线在最底层，不遮挡节点
+        }}></svg>
         <div>
-          {storyData.map(frameData => (
-            <div
-              key={frameData.id}
-              style={{ left: `${frameData.pos.x}px`, top: `${frameData.pos.y}px`, position: 'absolute' }}
-              onClick={() => onFrameSelect(frameData.id)}
-            >
-              <NodeRenderer
-                node={frameData}
-                selected={frameData.id === selectedFrameId}
-                onNodeClick={() => onFrameSelect(frameData.id)}
-                onNodeDelete={() => onDeleteNode(frameData.id)}
-                onGenerateBranches={handleGenerateBranches}
-                onMoveNode={onMoveNode}
-                onTextSave={onTextSave}
-                onPromptSave={onPromptSave}
-                onNodeStateChange={onNodeStateChange}
-                onAddFrame={handleAddFrame}
-                onExploreScene={onExploreScene}
-                onGenerateImage={onGenerateImage}
-                onDeleteFrame={onDeleteFrame}
-                onUpdateNode={updateNode}
-              />
-            </div>
-          ))}
+          {storyData
+            .filter(frameData => frameData && frameData.pos && typeof frameData.pos.x === 'number' && typeof frameData.pos.y === 'number')
+            .map(frameData => {
+              // 计算动态z-index：被选中的节点和展开状态的节点应该有更高的层级
+              const getNodeZIndex = () => {
+                if (frameData.id === selectedFrameId) {
+                  return 1000; // 被选中的节点最高层级
+                } else if (frameData.state === 'expanded' || frameData.state === 'editing' || frameData.state === 'generating') {
+                  return 500; // 展开状态的节点次高层级
+                } else {
+                  return 1; // 普通折叠状态节点基础层级
+                }
+              };
+
+              return (
+                <div
+                  key={frameData.id}
+                  style={{ 
+                    left: `${frameData.pos.x}px`, 
+                    top: `${frameData.pos.y}px`, 
+                    position: 'absolute',
+                    zIndex: getNodeZIndex() // 动态设置z-index
+                  }}
+                  onClick={() => onFrameSelect(frameData.id)}
+                >
+                  <NodeRenderer
+                    node={frameData}
+                    selected={frameData.id === selectedFrameId}
+                    onNodeClick={() => onFrameSelect(frameData.id)}
+                    onNodeDelete={() => onDeleteNode(frameData.id)}
+                    onGenerateBranches={handleGenerateBranches}
+                    onMoveNode={onMoveNode}
+                    onTextSave={onTextSave}
+                    onPromptSave={onPromptSave}
+                    onNodeStateChange={onNodeStateChange}
+                    onAddFrame={handleAddFrame}
+                    onExploreScene={onExploreScene}
+                    onGenerateImage={onGenerateImage}
+                    onDeleteFrame={onDeleteFrame}
+                    onUpdateNode={updateNode}
+                  />
+                </div>
+              );
+            })}
         </div>
       </div>
 
@@ -1240,32 +1477,31 @@ function PersonaStoryPage({
   const [storyInput, setStoryInput] = useState('');
   const [isPersonaModalOpen, setIsPersonaModalOpen] = useState(false);
 
-  // 三个故事脚本区域的状态
+  // 两个故事脚本区域的状态
   const [storyAreas, setStoryAreas] = useState({
-    area1: { keywords: [] },
-    area2: { keywords: [] },
-    area3: { keywords: [] }
+    area1: { name: '故事区域1', keywords: [] },
+    area2: { name: '故事区域2', keywords: [] }
   });
 
   // 关键词筛选状态
   const [activeKeywordFilter, setActiveKeywordFilter] = useState('all');
 
-  // 关键词类型配置 - 更新为新的5个维度
+  // 关键词类型配置 - 使用统一的颜色系统
   const keywordTypes = [
     {
       id: 'elements',
       name: '元素',
-      color: 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+      color: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
     },
     {
       id: 'user_traits',
       name: '用户特征',
-      color: 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+      color: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
     },
     {
       id: 'pain_points',
       name: '痛点',
-      color: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+      color: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
     },
     {
       id: 'goals',
@@ -1285,13 +1521,23 @@ function PersonaStoryPage({
       const defaultPersona = {
         persona_name: '张敏',
         persona_summary: '35岁银行客户经理，工作繁忙，注重效率',
+        memorable_quote: '当手机电量比我的耐心先耗尽时，任何精致菜谱都成了讽刺漫画',
+        appearance_characteristics: '穿着职业装，经常单手持手机推购物车',
         persona_details: {
           age: '35岁',
           occupation: '银行客户经理',
           lifestyle: '工作繁忙，经常加班',
+          education: '本科',
+          city: '北京',
+          technology_literacy: '中',
+          gender: '女',
           pain_points: ['时间紧张', '手机电量焦虑', '效率流失放大镜效应'],
           goals: ['快速找到适合的菜谱', '节省时间', '缓解育儿愧疚感'],
-          behaviors: ['单手持手机推购物车', '底线思维', '量化表达']
+          behaviors: ['单手持手机推购物车', '底线思维', '量化表达'],
+          psychological_profile: ['效率导向', '底线思维', '量化表达'],
+          communication_style: ['直接表达', '自嘲式幽默', '对营销话术敏感'],
+          tool_expectations: ['快速响应', '简单易用', '节省时间'],
+          devices: ['智能手机', '平板电脑']
         }
       };
       setPersonas([defaultPersona]);
@@ -1312,14 +1558,14 @@ function PersonaStoryPage({
     e.dataTransfer.setData('text/plain', JSON.stringify(dragData));
     e.dataTransfer.setData('keyword', JSON.stringify(keyword));
 
-    // 添加颜色信息到拖拽数据
+    // 添加颜色信息到拖拽数据 - 使用统一的颜色系统
     const keywordWithColor = {
       ...keyword,
-      originalColor: keyword.type === 'emotions' ? 'red' :
-        keyword.type === 'actions' ? 'blue' :
-          keyword.type === 'goals' ? 'green' :
-            keyword.type === 'contexts' ? 'yellow' :
-              keyword.type === 'pain_points' ? 'purple' : 'blue'
+                  originalColor: keyword.type === 'emotions' ? 'indigo' :
+        keyword.type === 'pain_points' ? 'red' :
+          keyword.type === 'goals' ? 'amber' :
+            keyword.type === 'user_traits' ? 'green' :
+              keyword.type === 'elements' ? 'blue' : 'blue'
     };
     e.dataTransfer.setData('keyword', JSON.stringify(keywordWithColor));
   };
@@ -1377,6 +1623,9 @@ function PersonaStoryPage({
           const storyId = `story-${areaId}`;
           const storyTitle = area.name;
           const storyContent = generateStoryContent(area);
+          
+          // 生成Claim评价
+          const claimEvaluation = generateClaimEvaluation(area);
 
           stories.push({
             id: storyId,
@@ -1384,7 +1633,8 @@ function PersonaStoryPage({
             content: storyContent,
             tags: area.keywords.map(k => k.text),
             score: 85 + Math.floor(Math.random() * 15),
-            areaId: areaId
+            areaId: areaId,
+            claimEvaluation: claimEvaluation
           });
         }
       });
@@ -1440,6 +1690,88 @@ function PersonaStoryPage({
     }
   };
 
+  // 生成Claim评价
+  const generateClaimEvaluation = (area) => {
+    const keywords = area.keywords.map(k => k.text).join('、');
+    
+    if (area.name === '效率导向故事') {
+      return {
+        positive: {
+          title: '正面评价',
+          description: '这个故事在效率导向方面表现优秀',
+          bubbles: [
+            '时间管理清晰',
+            '决策逻辑合理',
+            '效率提升明显',
+            '成本效益平衡',
+            '解决方案实用'
+          ]
+        },
+        negative: {
+          title: '需要改进',
+          description: '以下方面可以进一步优化',
+          bubbles: [
+            '情感维度不足',
+            '用户动机模糊',
+            '冲突设置简单',
+            '转折点不够突出',
+            '细节描述欠缺'
+          ]
+        }
+      };
+    } else if (area.name === '情感共鸣故事') {
+      return {
+        positive: {
+          title: '正面评价',
+          description: '这个故事在情感共鸣方面表现优秀',
+          bubbles: [
+            '情感层次丰富',
+            '用户动机清晰',
+            '冲突设置合理',
+            '情感转折自然',
+            '结局令人满意'
+          ]
+        },
+        negative: {
+          title: '需要改进',
+          description: '以下方面可以进一步优化',
+          bubbles: [
+            '效率维度不足',
+            '时间管理模糊',
+            '解决方案不够具体',
+            '量化指标欠缺',
+            '实用性有待提升'
+          ]
+        }
+      };
+    } else {
+      return {
+        positive: {
+          title: '正面评价',
+          description: '这个故事在问题解决方面表现良好',
+          bubbles: [
+            '问题定义清晰',
+            '解决思路明确',
+            '过程描述详细',
+            '结果可预期',
+            '经验总结到位'
+          ]
+        },
+        negative: {
+          title: '需要改进',
+          description: '以下方面可以进一步优化',
+          bubbles: [
+            '情感深度不足',
+            '用户特征模糊',
+            '冲突设置简单',
+            '转折点不够突出',
+            '个性化程度低'
+          ]
+        }
+      };
+    }
+  };
+
   // 选择故事脚本
   const selectStory = (story) => {
     setSelectedStoryId(story.id);
@@ -1468,7 +1800,7 @@ function PersonaStoryPage({
   };
 
   return (
-    <div className="h-full flex bg-gray-50 gap-6 p-6 overflow-hidden relative">
+    <div className="h-full flex bg-gray-50 gap-4 p-4 overflow-hidden relative">
       {/* 返回按钮 */}
       <button
         onClick={onBack}
@@ -1478,10 +1810,10 @@ function PersonaStoryPage({
       </button>
 
       {/* 左侧面板：精简用户画像 + 气泡池 */}
-      <div className="w-80 flex flex-col space-y-4">
+      <div className="w-80 flex flex-col space-y-2.5">
         {/* 精简用户画像 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-          <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+          <div className="p-2.5 border-b border-gray-100 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-800 flex items-center">
               <User className="mr-2 text-blue-500" />
               用户画像
@@ -1495,27 +1827,27 @@ function PersonaStoryPage({
           </div>
 
           {selectedPersona ? (
-            <div className="p-3 space-y-2">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                  <span className="text-sm">👤</span>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-800 text-sm">{selectedPersona.persona_name}</h4>
-                  <p className="text-xs text-gray-600">{selectedPersona.persona_details.age} • {selectedPersona.persona_details.occupation}</p>
-                </div>
+                      <div className="p-3 space-y-2">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                <span className="text-base">👤</span>
               </div>
+              <div>
+                <h4 className="font-semibold text-gray-800 text-base">{selectedPersona.persona_name}</h4>
+                <p className="text-sm text-gray-600">{selectedPersona.persona_details.age} • {selectedPersona.persona_details.occupation}</p>
+              </div>
+            </div>
 
-              <p className="text-xs text-gray-700">{selectedPersona.persona_summary}</p>
+            <p className="text-sm text-gray-700">{selectedPersona.persona_summary}</p>
 
               {/* 关键信息标签 */}
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {selectedPersona.persona_details.pain_points && selectedPersona.persona_details.pain_points.length > 0 && (
                   <div>
-                    <div className="text-xs text-gray-500 mb-1">主要痛点</div>
-                    <div className="flex flex-wrap gap-1">
+                    <div className="text-sm text-gray-500 mb-1.5">主要痛点</div>
+                    <div className="flex flex-wrap gap-1.5">
                       {selectedPersona.persona_details.pain_points.slice(0, 2).map((point, idx) => (
-                        <span key={idx} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">
+                        <span key={idx} className="text-sm bg-red-100 text-red-700 px-2.5 py-1.5 rounded">
                           {point}
                         </span>
                       ))}
@@ -1525,10 +1857,10 @@ function PersonaStoryPage({
 
                 {selectedPersona.persona_details.goals && selectedPersona.persona_details.goals.length > 0 && (
                   <div>
-                    <div className="text-xs text-gray-500 mb-1">主要目标</div>
-                    <div className="flex flex-wrap gap-1">
+                    <div className="text-sm text-gray-500 mb-1.5">主要目标</div>
+                    <div className="flex flex-wrap gap-1.5">
                       {selectedPersona.persona_details.goals.slice(0, 2).map((goal, idx) => (
-                        <span key={idx} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                        <span key={idx} className="text-sm bg-green-100 text-green-700 px-2.5 py-1.5 rounded">
                           {goal}
                         </span>
                       ))}
@@ -1547,7 +1879,7 @@ function PersonaStoryPage({
 
         {/* 关键词气泡池 - 固定高度 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col flex-1 min-h-0">
-          <div className="p-3 border-b border-gray-100">
+          <div className="p-2.5 border-b border-gray-100">
             <h2 className="text-sm font-semibold text-gray-800 flex items-center">
               <div className="w-5 h-5 bg-gray-100 rounded-lg flex items-center justify-center mr-2 text-xs">
                 🏷️
@@ -1558,10 +1890,10 @@ function PersonaStoryPage({
 
           {/* 筛选按钮 */}
           <div className="p-3 border-b border-gray-100">
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1.5">
               <button
                 onClick={() => setActiveKeywordFilter('all')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${activeKeywordFilter === 'all'
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${activeKeywordFilter === 'all'
                     ? 'bg-gray-900 text-white shadow-sm'
                     : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-800'
                   }`}
@@ -1575,7 +1907,7 @@ function PersonaStoryPage({
                   <button
                     key={type.id}
                     onClick={() => setActiveKeywordFilter(type.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${activeKeywordFilter === type.id
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${activeKeywordFilter === type.id
                         ? 'bg-gray-900 text-white shadow-sm'
                         : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-800'
                       }`}
@@ -1596,8 +1928,8 @@ function PersonaStoryPage({
 
                 return (
                   <div key={type.id}>
-                    <h3 className="text-xs font-medium text-gray-700 mb-2 flex items-center">
-                      <span className={`w-2 h-2 rounded-full mr-2 ${type.color.includes('blue') ? 'bg-blue-400' :
+                    <h3 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+                      <span className={`w-2.5 h-2.5 rounded-full mr-2 ${type.color.includes('blue') ? 'bg-blue-400' :
                         type.color.includes('green') ? 'bg-green-400' :
                           type.color.includes('red') ? 'bg-red-400' :
                             type.color.includes('yellow') ? 'bg-yellow-400' : 'bg-purple-400'}`}></span>
@@ -1609,7 +1941,7 @@ function PersonaStoryPage({
                           key={keyword.id}
                           draggable
                           onDragStart={(e) => handleDragStart(e, keyword)}
-                          className={`${type.color} px-3 py-1.5 rounded-lg text-xs font-medium cursor-move hover:shadow-sm transition-all duration-200 border max-w-full`}
+                          className={`${type.color} px-3 py-1.5 rounded-lg text-sm font-medium cursor-move hover:shadow-sm transition-all duration-200 border max-w-full`}
                         >
                           <span className="break-words">{keyword.text}</span>
                         </div>
@@ -1623,13 +1955,13 @@ function PersonaStoryPage({
         </div>
       </div>
 
-      {/* 右侧面板：故事输入 + 三个故事区域 */}
-      <div className="flex-1 flex flex-col space-y-6 min-h-0">
+      {/* 右侧面板：故事输入 + 两个故事区域 */}
+      <div className="flex-1 flex flex-col space-y-2.5 min-h-0">
         {/* 故事输入区域 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-          <div className="p-4 border-b border-gray-100">
-            <h2 className="text-base font-semibold text-gray-800 flex items-center">
-              <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center mr-2 text-sm">
+          <div className="p-3 border-b border-gray-100">
+            <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+              <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center mr-3 text-base">
                 ✍️
               </div>
               故事构思输入
@@ -1641,7 +1973,7 @@ function PersonaStoryPage({
               value={storyInput}
               onChange={(e) => setStoryInput(e.target.value)}
               placeholder="在这里输入您的初始故事想法..."
-              className="w-full h-24 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm leading-relaxed resize-none"
+              className="w-full h-24 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm leading-relaxed resize-none"
               onDrop={(e) => {
                 e.preventDefault();
                 try {
@@ -1659,68 +1991,80 @@ function PersonaStoryPage({
           </div>
         </div>
 
-        {/* 三个故事脚本区域 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-h-0 flex flex-col">
-          <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-gray-800 flex items-center">
-              <div className="w-6 h-6 bg-green-100 rounded-lg flex items-center justify-center mr-2 text-sm">
-                📚
-              </div>
-              故事脚本生成
-            </h2>
-            <button
-              onClick={generateStories}
-              disabled={Object.values(storyAreas).every(area => area.keywords.length === 0) || isGenerating}
-              className="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center text-sm"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  生成中...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  生成故事
-                </>
-              )}
-            </button>
-          </div>
+                  {/* 两个故事脚本区域 */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-h-0 flex flex-col" style={{ minHeight: '320px' }}>
+            <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+                <div className="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center mr-3 text-base">
+                  📚
+                </div>
+                故事脚本生成
+              </h2>
+              <button
+                onClick={generateStories}
+                disabled={Object.values(storyAreas).every(area => area.keywords.length === 0) || isGenerating}
+                className="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center text-sm font-medium"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    生成中...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    生成故事
+                  </>
+                )}
+              </button>
+            </div>
 
-          <div className="p-4 flex-1 overflow-y-auto">
-            <div className="grid grid-cols-3 gap-4 h-full">
+          <div className="p-3 flex-1 overflow-y-auto">
+            <div className="grid grid-cols-2 gap-6 h-full">
               {Object.entries(storyAreas).map(([areaId, area]) => (
                 <div
                   key={areaId}
-                  className="border-2 border-dashed border-gray-300 rounded-xl p-4 bg-gray-50 hover:border-gray-400 transition-colors"
+                  className="border-2 border-dashed border-gray-300 rounded-xl p-3 bg-gray-50 hover:border-gray-400 transition-colors min-h-[140px] max-h-[180px] flex flex-col"
                   onDrop={(e) => handleDrop(e, areaId)}
                   onDragOver={handleDragOver}
                 >
                   {/* 拖拽提示 */}
                   {area.keywords.length === 0 && (
-                    <div className="text-center py-8 text-gray-400">
-                      <div className="w-8 h-8 mx-auto mb-2 text-gray-300">📥</div>
-                      <p className="text-xs">拖拽关键词到这里</p>
+                    <div className="text-center py-4 text-gray-400 flex-1 flex flex-col items-center justify-center">
+                      <div className="w-5 h-5 mx-auto mb-1.5 text-gray-300">📥</div>
+                      <p className="text-sm font-medium">拖拽关键词到这里</p>
+                      <p className="text-xs text-gray-400 mt-1">开始构建您的故事</p>
                     </div>
                   )}
 
                   {/* 已添加的关键词 */}
-                  <div className="space-y-2">
-                    {area.keywords.map(keyword => (
-                      <div
-                        key={keyword.id}
-                        className="inline-flex items-center justify-between bg-white p-2 rounded-lg border border-gray-200 max-w-full"
-                      >
-                        <span className="text-xs text-gray-700 flex-1 break-words pr-2">{keyword.text}</span>
-                        <button
-                          onClick={() => removeFromStoryArea(areaId, keyword.id)}
-                          className="text-gray-400 hover:text-red-500 flex-shrink-0 p-0.5 rounded hover:bg-red-50 transition-colors text-xs"
-                        >
-                          ×
-                        </button>
+                  {area.keywords.length > 0 && (
+                    <div className="flex-1 overflow-y-auto">
+                      <div className="space-y-2">
+                        {area.keywords.map(keyword => (
+                          <div
+                            key={keyword.id}
+                            className={`inline-flex items-center justify-between p-2 rounded-lg border max-w-full ${
+                              keyword.type === 'elements' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                              keyword.type === 'user_traits' ? 'bg-green-50 text-green-700 border-green-200' :
+                              keyword.type === 'pain_points' ? 'bg-red-50 text-red-700 border-red-200' :
+                              keyword.type === 'goals' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                              keyword.type === 'emotions' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                              'bg-gray-50 text-gray-700 border-gray-200'
+                            }`}
+                          >
+                            <span className="text-sm flex-1 break-words pr-2 leading-relaxed">{keyword.text}</span>
+                            <button
+                              onClick={() => removeFromStoryArea(areaId, keyword.id)}
+                              className="text-gray-400 hover:text-red-500 flex-shrink-0 p-1 rounded hover:bg-red-50 transition-colors text-sm ml-1"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1729,10 +2073,10 @@ function PersonaStoryPage({
 
         {/* 生成的故事脚本预览 */}
         {generatedStories.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-800 flex items-center">
-                <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center mr-2 text-sm">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200" style={{ minHeight: '600px' }}>
+            <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+                <div className="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center mr-3 text-base">
                   📖
                 </div>
                 生成的故事脚本
@@ -1749,28 +2093,60 @@ function PersonaStoryPage({
             </div>
 
             <div className="p-4">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-6">
                 {generatedStories.map(story => (
                   <div
                     key={story.id}
-                    className={`border-2 rounded-xl p-4 cursor-pointer transition-all hover:shadow-lg ${selectedStoryId === story.id
-                        ? 'border-blue-500 bg-blue-50 shadow-md'
+                    className={`border-2 rounded-xl p-2.5 cursor-pointer transition-all hover:shadow-lg ${selectedStoryId === story.id
+                        ? 'border-blue-500 shadow-md'
                         : 'border-gray-200 hover:border-gray-300'
                       }`}
                     onClick={() => selectStory(story)}
                   >
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold text-gray-900 text-sm">{story.title}</h3>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-gray-900 text-base">{story.title}</h3>
                       {selectedStoryId === story.id && (
-                        <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
-                          <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
+                        <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                          <div className="w-2 h-2 bg-white rounded-full"></div>
                         </div>
                       )}
                     </div>
 
-                    <div className="text-xs text-gray-600 line-clamp-4 leading-relaxed">
+                    <div className="text-sm text-gray-700 leading-relaxed mb-3 font-medium line-clamp-8">
                       {story.content.split('\n\n')[0]}
                     </div>
+
+                    {/* Claim评价区域 */}
+                    {story.claimEvaluation && (
+                      <div className="pt-1 border-t border-gray-100">
+                        {/* 左右分列布局 */}
+                        <div className="grid grid-cols-2 gap-2">
+                          {/* 左侧：正面评价 */}
+                          <div className="space-y-1">
+
+                            <div className="flex flex-wrap gap-1">
+                              {story.claimEvaluation.positive.bubbles.slice(0, 2).map((bubble, idx) => (
+                                <span key={idx} className="text-sm bg-green-50 text-green-600 px-2 py-1 rounded border border-green-200">
+                                  {bubble}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 右侧：负面评价 */}
+                          <div className="space-y-1">
+
+                            <div className="flex flex-wrap gap-1">
+                              {story.claimEvaluation.negative.bubbles.slice(0, 2).map((bubble, idx) => (
+                                <span key={idx} className="text-sm bg-orange-50 text-orange-600 px-2 py-1 rounded border border-orange-200">
+                                  {bubble}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1794,7 +2170,52 @@ function PersonaStoryPage({
 
 // 用户画像编辑弹窗组件
 const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
-  const [editedPersona, setEditedPersona] = useState(persona);
+  const [editedPersona, setEditedPersona] = useState(() => {
+    // 确保所有新字段都有默认值
+    const defaultFields = {
+      memorable_quote: '',
+      appearance_characteristics: '',
+      persona_details: {
+        age: '',
+        occupation: '',
+        lifestyle: '',
+        education: '',
+        city: '',
+        technology_literacy: '',
+        gender: '',
+        pain_points: [],
+        goals: [],
+        behaviors: [],
+        preferences: [],
+        attitudes: [],
+        frustrations: [],
+        technologies: [],
+        psychological_profile: [],
+        communication_style: [],
+        tool_expectations: [],
+        devices: []
+      }
+    };
+    
+    // 深度合并默认字段和现有数据
+    const merged = JSON.parse(JSON.stringify(persona));
+    
+    // 合并基本信息
+    Object.keys(defaultFields).forEach(key => {
+      if (!merged[key]) {
+        merged[key] = defaultFields[key];
+      }
+    });
+    
+    // 合并persona_details
+    Object.keys(defaultFields.persona_details).forEach(key => {
+      if (!merged.persona_details[key]) {
+        merged.persona_details[key] = defaultFields.persona_details[key];
+      }
+    });
+    
+    return merged;
+  });
   const [activeTab, setActiveTab] = useState('basic');
   const [selectedPersonaIndex, setSelectedPersonaIndex] = useState(
     personas.findIndex(p => p.id === persona.id) || 0
@@ -1859,6 +2280,8 @@ const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
     { id: 'pain_points', name: '痛点问题', icon: '⚠️' },
     { id: 'goals', name: '目标动机', icon: '🎯' },
     { id: 'behaviors', name: '行为特征', icon: '🎭' },
+    { id: 'psychological', name: '心理特征', icon: '🧠' },
+    { id: 'communication', name: '沟通风格', icon: '💬' },
     ...customDimensions.map(dim => ({
       id: `custom_${dim.id}`,
       name: dim.name,
@@ -1870,7 +2293,52 @@ const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
   // 切换用户画像
   const switchPersona = (index) => {
     setSelectedPersonaIndex(index);
-    setEditedPersona(personas[index]);
+    const newPersona = personas[index];
+    
+    // 确保所有新字段都有默认值
+    const defaultFields = {
+      memorable_quote: '',
+      appearance_characteristics: '',
+      persona_details: {
+        age: '',
+        occupation: '',
+        lifestyle: '',
+        education: '',
+        city: '',
+        technology_literacy: '',
+        gender: '',
+        pain_points: [],
+        goals: [],
+        behaviors: [],
+        preferences: [],
+        attitudes: [],
+        frustrations: [],
+        technologies: [],
+        psychological_profile: [],
+        communication_style: [],
+        tool_expectations: [],
+        devices: []
+      }
+    };
+    
+    // 深度合并默认字段和现有数据
+    const merged = JSON.parse(JSON.stringify(newPersona));
+    
+    // 合并基本信息
+    Object.keys(defaultFields).forEach(key => {
+      if (!merged[key]) {
+        merged[key] = defaultFields[key];
+      }
+    });
+    
+    // 合并persona_details
+    Object.keys(defaultFields.persona_details).forEach(key => {
+      if (!merged.persona_details[key]) {
+        merged.persona_details[key] = defaultFields.persona_details[key];
+      }
+    });
+    
+    setEditedPersona(merged);
   };
 
   // 添加自定义维度
@@ -1922,15 +2390,15 @@ const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl h-[85vh] flex flex-col border border-gray-200">
         {/* 头部 */}
-        <div className="bg-gray-50 border-b border-gray-200 p-6">
+        <div className="bg-gray-50 border-b border-gray-200 p-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-gray-200 rounded-xl flex items-center justify-center">
-                  <span className="text-xl">👤</span>
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gray-200 rounded-xl flex items-center justify-center">
+                  <span className="text-lg">👤</span>
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900">用户画像编辑</h2>
+                  <h2 className="text-lg font-semibold text-gray-900">用户画像编辑</h2>
                   <p className="text-sm text-gray-600">{editedPersona.persona_name}</p>
                 </div>
               </div>
@@ -1967,13 +2435,13 @@ const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
 
         <div className="flex flex-1 overflow-hidden">
           {/* 左侧标签栏 */}
-          <div className="w-56 bg-white border-r border-gray-200 p-4 overflow-y-auto">
+          <div className="w-48 bg-white border-r border-gray-200 p-3 overflow-y-auto">
             <div className="space-y-1">
               {tabs.map(tab => (
                 <div key={tab.id} className="flex items-center">
                   <button
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex-1 flex items-center space-x-3 px-4 py-3 rounded-xl transition-all text-left ${activeTab === tab.id
+                    className={`flex-1 flex items-center space-x-3 px-3 py-2.5 rounded-xl transition-all text-left ${activeTab === tab.id
                         ? 'bg-gray-900 text-white'
                         : 'text-gray-600 hover:bg-gray-50'
                       }`}
@@ -1998,7 +2466,7 @@ const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
                 {!showAddDimension ? (
                   <button
                     onClick={() => setShowAddDimension(true)}
-                    className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-left text-gray-500 hover:bg-gray-50 transition-all"
+                    className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-left text-gray-500 hover:bg-gray-50 transition-all"
                   >
                     <Plus className="w-4 h-4" />
                     <span className="font-medium text-sm">添加维度</span>
@@ -2039,7 +2507,7 @@ const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
 
           {/* 右侧内容区 */}
           <div className="flex-1 overflow-y-auto bg-gray-50">
-            <div className="p-6">
+            <div className="p-4">
               {activeTab === 'basic' && (
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -2049,7 +2517,7 @@ const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
                         type="text"
                         value={editedPersona.persona_name}
                         onChange={(e) => updatePersonaField('persona_name', e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
                         placeholder="输入用户姓名"
                       />
                     </div>
@@ -2060,7 +2528,7 @@ const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
                         type="text"
                         value={editedPersona.persona_details.age}
                         onChange={(e) => updatePersonaField('persona_details.age', e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
                         placeholder="例：35岁"
                       />
                     </div>
@@ -2072,8 +2540,8 @@ const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
                       type="text"
                       value={editedPersona.persona_details.occupation}
                       onChange={(e) => updatePersonaField('persona_details.occupation', e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
-                      placeholder="例：银行客户经理"
+                                              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
+                        placeholder="例：银行客户经理"
                     />
                   </div>
 
@@ -2082,9 +2550,9 @@ const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
                     <textarea
                       value={editedPersona.persona_summary}
                       onChange={(e) => updatePersonaField('persona_summary', e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
-                      rows="3"
-                      placeholder="简要描述用户的基本情况和特点"
+                                              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
+                        rows="3"
+                        placeholder="简要描述用户的基本情况和特点"
                     />
                   </div>
 
@@ -2093,10 +2561,154 @@ const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
                     <textarea
                       value={editedPersona.persona_details.lifestyle}
                       onChange={(e) => updatePersonaField('persona_details.lifestyle', e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
                       rows="3"
                       placeholder="描述用户的日常生活方式和习惯"
                     />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-3">教育程度</label>
+                      <input
+                        type="text"
+                        value={editedPersona.persona_details.education || ''}
+                        onChange={(e) => updatePersonaField('persona_details.education', e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
+                        placeholder="例：本科"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-3">城市</label>
+                      <input
+                        type="text"
+                        value={editedPersona.persona_details.city || ''}
+                        onChange={(e) => updatePersonaField('persona_details.city', e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
+                        placeholder="例：北京"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-3">技术熟练度</label>
+                      <select
+                        value={editedPersona.persona_details.technology_literacy || ''}
+                        onChange={(e) => updatePersonaField('persona_details.technology_literacy', e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
+                      >
+                        <option value="">请选择</option>
+                        <option value="低">低</option>
+                        <option value="中">中</option>
+                        <option value="高">高</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-3">性别</label>
+                      <select
+                        value={editedPersona.persona_details.gender || ''}
+                        onChange={(e) => updatePersonaField('persona_details.gender', e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
+                      >
+                        <option value="">请选择</option>
+                        <option value="男">男</option>
+                        <option value="女">女</option>
+                        <option value="其他">其他</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-900 mb-3">代表性话语</label>
+                    <textarea
+                      value={editedPersona.memorable_quote || ''}
+                      onChange={(e) => updatePersonaField('memorable_quote', e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
+                      rows="2"
+                      placeholder="输入用户的代表性话语或口头禅"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-900 mb-3">外观特征</label>
+                    <textarea
+                      value={editedPersona.appearance_characteristics || ''}
+                      onChange={(e) => updatePersonaField('appearance_characteristics', e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-gray-500 focus:border-gray-500 transition-colors text-sm"
+                      rows="2"
+                      placeholder="描述用户的外观特征"
+                    />
+                  </div>
+
+                  {/* 工具期望 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-900 mb-3">工具期望</label>
+                    <div className="space-y-3">
+                      {(editedPersona.persona_details.tool_expectations || []).map((expectation, index) => (
+                        <div key={index} className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                          <div className="w-6 h-6 bg-blue-300 rounded-full flex items-center justify-center text-blue-700 text-sm font-medium">
+                            🛠️
+                          </div>
+                          <input
+                            type="text"
+                            value={expectation}
+                            onChange={(e) => updateArrayItem('persona_details.tool_expectations', index, e.target.value)}
+                            className="flex-1 bg-transparent border-none focus:outline-none text-gray-800 placeholder-gray-400 text-sm"
+                            placeholder="描述用户对工具的期望"
+                          />
+                          <button
+                            onClick={() => removeArrayItem('persona_details.tool_expectations', index)}
+                            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-full transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => addArrayItem('persona_details.tool_expectations', '')}
+                        className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>添加工具期望</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 使用设备 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-900 mb-3">使用设备</label>
+                    <div className="space-y-3">
+                      {(editedPersona.persona_details.devices || []).map((device, index) => (
+                        <div key={index} className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                          <div className="w-6 h-6 bg-green-300 rounded-full flex items-center justify-center text-green-700 text-sm font-medium">
+                            📱
+                          </div>
+                          <input
+                            type="text"
+                            value={device}
+                            onChange={(e) => updateArrayItem('persona_details.devices', index, e.target.value)}
+                            className="flex-1 bg-transparent border-none focus:outline-none text-gray-800 placeholder-gray-400 text-sm"
+                            placeholder="描述用户使用的设备"
+                          />
+                          <button
+                            onClick={() => removeArrayItem('persona_details.devices', index)}
+                            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-full transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => addArrayItem('persona_details.devices', '')}
+                        className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>添加使用设备</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -2107,7 +2719,7 @@ const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
                     <h3 className="text-lg font-semibold text-gray-900">主要痛点</h3>
                     <button
                       onClick={() => addArrayItem('persona_details.pain_points', '')}
-                      className="flex items-center space-x-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm"
+                      className="flex items-center space-x-2 px-3 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm"
                     >
                       <Plus className="w-4 h-4" />
                       <span>添加痛点</span>
@@ -2215,6 +2827,86 @@ const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
                 </div>
               )}
 
+              {/* 心理特征标签页 */}
+              {activeTab === 'psychological' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-gray-900">心理特征</h3>
+                    <button
+                      onClick={() => addArrayItem('persona_details.psychological_profile', '')}
+                      className="flex items-center space-x-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>添加特征</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {(editedPersona.persona_details.psychological_profile || []).map((profile, index) => (
+                      <div key={index} className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="w-6 h-6 bg-purple-300 rounded-full flex items-center justify-center text-gray-700 text-sm font-medium">
+                          {index + 1}
+                        </div>
+                        <input
+                          type="text"
+                          value={profile}
+                          onChange={(e) => updateArrayItem('persona_details.psychological_profile', index, e.target.value)}
+                          className="flex-1 bg-transparent border-none focus:outline-none text-gray-800 placeholder-gray-400 text-sm"
+                          placeholder="描述用户的心理特征"
+                        />
+                        <button
+                          onClick={() => removeArrayItem('persona_details.psychological_profile', index)}
+                          className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-full transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 沟通风格标签页 */}
+              {activeTab === 'communication' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-gray-900">沟通风格</h3>
+                    <button
+                      onClick={() => addArrayItem('persona_details.communication_style', '')}
+                      className="flex items-center space-x-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>添加风格</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {(editedPersona.persona_details.communication_style || []).map((style, index) => (
+                      <div key={index} className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="w-6 h-6 bg-cyan-300 rounded-full flex items-center justify-center text-gray-700 text-sm font-medium">
+                          {index + 1}
+                        </div>
+                        <input
+                          type="text"
+                          value={style}
+                          onChange={(e) => updateArrayItem('persona_details.communication_style', index, e.target.value)}
+                          className="flex-1 bg-transparent border-none focus:outline-none text-gray-800 placeholder-gray-400 text-sm"
+                          placeholder="描述用户的沟通风格"
+                        />
+                        <button
+                          onClick={() => removeArrayItem('persona_details.communication_style', index)}
+                          className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-full transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+
+
               {/* 自定义维度内容 */}
               {activeTab.startsWith('custom_') && (
                 <div className="space-y-6">
@@ -2260,7 +2952,7 @@ const PersonaEditModal = ({ persona, personas = [], onSave, onClose }) => {
         </div>
 
         {/* 底部按钮 - 固定在底部 */}
-        <div className="flex-shrink-0 p-6 bg-white border-t border-gray-200 flex justify-end space-x-3">
+        <div className="flex-shrink-0 p-4 bg-white border-t border-gray-200 flex justify-end space-x-3">
           <button
             onClick={onClose}
             className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
@@ -2353,6 +3045,10 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   const lastSelectedRectRef = useRef(null);
   const [dragHighlightRects, setDragHighlightRects] = useState([]);
 
+  // 拖拽状态管理
+  const [draggedNodeId, setDraggedNodeId] = useState(null);
+  const [dragTargetIndex, setDragTargetIndex] = useState(null);
+
   // 重构后的树状数据结构
   const [storyModel, setStoryModel] = useState({
     nodes: {}, // 所有节点对象，以 nodeId 为键
@@ -2364,7 +3060,22 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   // 为了兼容现有代码，保留 storyData 作为计算属性
   const storyData = useMemo(() => {
     const allNodes = Object.values(storyModel.nodes);
-    const sortedNodes = allNodes.sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
+    // 过滤掉无效的节点
+    const validNodes = allNodes.filter(node => 
+      node && 
+      node.id && 
+      node.pos && 
+      typeof node.pos.x === 'number' && 
+      typeof node.pos.y === 'number'
+    );
+    const sortedNodes = validNodes.sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
+    
+    console.log('🔧 storyData 计算:', {
+      totalNodes: allNodes.length,
+      validNodes: validNodes.length,
+      sortedNodes: sortedNodes.length
+    });
+    
     return sortedNodes;
   }, [storyModel]);
   const [selectedFrameId, setSelectedFrameId] = useState(null);
@@ -2386,6 +3097,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   // 情景探索相关状态
   const [isSceneExplorationOpen, setIsSceneExplorationOpen] = useState(false);
   const [currentExplorationNodeId, setCurrentExplorationNodeId] = useState(null);
+  const [isGeneratingPersonas, setIsGeneratingPersonas] = useState(false);
 
 
   
@@ -2414,22 +3126,48 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       }
     }));
 
-    // 如果更新会影响探索节点的宽度，则触发全局布局，确保其右侧分镜/子分支同步贴近
+    // 如果更新会影响节点的显示宽度，则立即触发布局
     try {
       const node = getNodeById(nodeId);
       const isExplorationNode = node && (node.type === NODE_TYPES.EXPLORATION || node.explorationData?.isExplorationNode);
-      const widthAffecting = Object.prototype.hasOwnProperty.call(updates || {}, 'showBubblesPanel')
+      const widthAffectingExploration = Object.prototype.hasOwnProperty.call(updates || {}, 'showBubblesPanel')
         || Object.prototype.hasOwnProperty.call(updates || {}, 'state');
-      if (isExplorationNode && widthAffecting) {
-        setTimeout(() => globalLayoutTree(), 0);
+      const widthAffectingStoryboard = Object.prototype.hasOwnProperty.call(updates || {}, 'showFloatingPanel')
+        || Object.prototype.hasOwnProperty.call(updates || {}, 'state');
+
+      if (isExplorationNode && widthAffectingExploration) {
+        // 情景探索节点尺寸变化会影响子分支，需要全局递归布局
+        requestAnimationFrame(() => globalLayoutTree());
+      } else if (!isExplorationNode && widthAffectingStoryboard) {
+        // 分镜节点的小面板显示/隐藏或展开状态变化，立即重新布局其后的节点
+        if (node && node.branchId) {
+          const branch = getBranchById(node.branchId);
+          if (branch) {
+            requestAnimationFrame(() => smartRelayout(branch, nodeId));
+          } else {
+            requestAnimationFrame(() => globalLayoutTree());
+          }
+        } else {
+          requestAnimationFrame(() => globalLayoutTree());
+        }
       }
-    } catch {}
+    } catch (error) {
+      console.warn('🔧 updateNode 布局更新失败:', error);
+    }
   }, []);
 
   const removeNode = useCallback((nodeId) => {
+    console.log('🔧 removeNode 被调用，节点ID:', nodeId);
+    
     setStoryModel(prev => {
       const newNodes = { ...prev.nodes };
-      delete newNodes[nodeId];
+      if (newNodes[nodeId]) {
+        delete newNodes[nodeId];
+        console.log('🔧 节点已从 storyModel.nodes 中删除:', nodeId);
+      } else {
+        console.warn('❌ 要删除的节点在 storyModel.nodes 中不存在:', nodeId);
+      }
+      
       return {
         ...prev,
         nodes: newNodes
@@ -2486,20 +3224,65 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   }, [storyModel]);
 
   const addNodeToBranch = useCallback((branchId, nodeId, position = 'end') => {
+    console.log('🔧 addNodeToBranch 被调用:', { branchId, nodeId, position });
+    
     setStoryModel(prev => {
       const branch = prev.branches[branchId];
-      if (!branch) return prev;
+      if (!branch) {
+        console.warn('❌ 分支不存在:', branchId);
+        return prev;
+      }
 
       // 防止重复插入相同节点
       if (branch.nodeIds.includes(nodeId)) {
+        console.warn('❌ 节点已存在于分支中:', nodeId);
         return prev;
       }
 
       let newNodeIds = [...branch.nodeIds];
       if (position === 'end') {
         newNodeIds.push(nodeId);
+        console.log('🔧 添加到分支末尾');
       } else if (typeof position === 'number') {
-        newNodeIds.splice(position, 0, nodeId);
+        // 确保位置在有效范围内
+        const validPosition = Math.max(0, Math.min(position, newNodeIds.length));
+        newNodeIds.splice(validPosition, 0, nodeId);
+        
+        console.log('🔧 插入到位置:', validPosition, '，当前分支节点:', newNodeIds);
+        
+        // 更新插入位置之后所有节点的 nodeIndex
+        const updatedNodes = { ...prev.nodes };
+        for (let i = validPosition + 1; i < newNodeIds.length; i++) {
+          const nodeIdToUpdate = newNodeIds[i];
+          if (updatedNodes[nodeIdToUpdate]) {
+            updatedNodes[nodeIdToUpdate] = {
+              ...updatedNodes[nodeIdToUpdate],
+              nodeIndex: i
+            };
+            console.log('🔧 更新节点索引:', nodeIdToUpdate, '->', i);
+          }
+        }
+        
+        // 同时更新新插入节点的 nodeIndex
+        if (updatedNodes[nodeId]) {
+          updatedNodes[nodeId] = {
+            ...updatedNodes[nodeId],
+            nodeIndex: validPosition
+          };
+          console.log('🔧 设置新节点索引:', nodeId, '->', validPosition);
+        }
+        
+        return {
+          ...prev,
+          nodes: updatedNodes,
+          branches: {
+            ...prev.branches,
+            [branchId]: {
+              ...branch,
+              nodeIds: newNodeIds
+            }
+          }
+        };
       }
 
       return {
@@ -2516,9 +3299,21 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   }, []);
 
   const removeNodeFromBranch = useCallback((branchId, nodeId) => {
+    console.log('🔧 removeNodeFromBranch 被调用:', { branchId, nodeId });
+    
     setStoryModel(prev => {
       const branch = prev.branches[branchId];
-      if (!branch) return prev;
+      if (!branch) {
+        console.warn('❌ 分支不存在:', branchId);
+        return prev;
+      }
+
+      const newNodeIds = branch.nodeIds.filter(id => id !== nodeId);
+      console.log('🔧 分支节点更新:', { 
+        oldNodeIds: branch.nodeIds, 
+        newNodeIds, 
+        removedNodeId: nodeId 
+      });
 
       return {
         ...prev,
@@ -2526,7 +3321,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
           ...prev.branches,
           [branchId]: {
             ...branch,
-            nodeIds: branch.nodeIds.filter(id => id !== nodeId)
+            nodeIds: newNodeIds
           }
         }
       };
@@ -2538,13 +3333,54 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     setLayoutTreeParams(storyModel, selectedFrameId, getNodeById, getBranchById, updateNode);
   }, [storyModel.nodes, storyModel.branches, selectedFrameId, getBranchById, getNodeById, updateNode]); // 添加必要的依赖项
 
+  // 监听节点状态变化，实时更新布局
+  useEffect(() => {
+    // 创建一个定时器来检查节点状态变化
+    const interval = setInterval(() => {
+      // 检查是否有节点状态发生变化
+      const currentNodes = Object.values(storyModel.nodes);
+      let hasStateChange = false;
+      
+      currentNodes.forEach(node => {
+        const nodeState = nodeStatesRef[node.id];
+        if (nodeState) {
+          // 检查节点是否展开或显示面板
+          const isCurrentlyExpanded = node.state === 'expanded' || node.state === 'editing';
+          const isCurrentlyShowingPanel = node.showFloatingPanel;
+          
+          if (nodeState.isExpanded !== isCurrentlyExpanded || 
+              nodeState.showFloatingPanel !== isCurrentlyShowingPanel) {
+            hasStateChange = true;
+            
+            // 更新节点状态引用
+            nodeStatesRef[node.id] = {
+              ...nodeState,
+              isExpanded: isCurrentlyExpanded,
+              showFloatingPanel: isCurrentlyShowingPanel,
+              lastUpdated: Date.now()
+            };
+          }
+        }
+      });
+      
+      // 如果有状态变化，触发布局更新
+      if (hasStateChange) {
+        console.log('🔧 检测到节点状态变化，触发布局更新');
+        requestAnimationFrame(() => globalLayoutTree());
+      }
+    }, 100); // 每100ms检查一次
+    
+    return () => clearInterval(interval);
+  }, [storyModel.nodes]);
+
   // 情景探索相关函数 - 使用新的树状数据结构
   const handleExploreScene = (nodeId) => {
-
-
+    console.log('🔧 handleExploreScene 被调用，节点ID:', nodeId);
+    
     // 获取源节点
     const sourceNode = getNodeById(nodeId);
     if (!sourceNode) {
+      console.warn('❌ 源节点不存在:', nodeId);
       return;
     }
 
@@ -2555,6 +3391,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     );
 
     if (existingExplorationNode) {
+      console.warn('❌ 已存在探索节点:', existingExplorationNode.id);
       return;
     }
 
@@ -2562,33 +3399,65 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     const sourceBranchId = sourceNode.branchId;
     const sourceBranch = getBranchById(sourceBranchId);
     if (!sourceBranch) {
+      console.warn('❌ 源分支不存在:', sourceBranchId);
       return;
     }
+
+    console.log('🔧 源节点信息:', {
+      id: sourceNode.id,
+      branchId: sourceBranchId,
+      currentIndex: sourceBranch.nodeIds.indexOf(nodeId),
+      totalNodes: sourceBranch.nodeIds.length
+    });
+
+    // 计算插入位置 - 插入到当前节点之后
+    const currentIndex = sourceBranch.nodeIds.indexOf(nodeId);
+    const insertIndex = currentIndex + 1;
+
+    // 计算新节点的基准位置 - 插入到当前节点右侧
+    const sourceNodeWidth = getNodeDisplayWidth(sourceNode);
+    const dynamicGap = calculateDynamicGap(sourceNode, currentIndex, sourceBranch.nodeIds.map(id => getNodeById(id)).filter(Boolean));
+    const newBaseX = sourceNode.pos.x + sourceNodeWidth + dynamicGap;
+
+    console.log('🔧 新探索节点位置计算:', {
+      sourceNodeWidth,
+      dynamicGap,
+      newBaseX,
+      insertIndex
+    });
 
     // 使用节点工厂函数创建探索节点
     const explorationNode = createNode(NODE_TYPES.EXPLORATION, {
       parentNodeId: nodeId,
       branchId: sourceBranchId,
-      nodeIndex: sourceBranch.nodeIds.length,
+      nodeIndex: insertIndex,
+      baseX: newBaseX,
+      pos: { x: newBaseX, y: sourceNode.pos.y }, // 设置初始位置
       onDataChange: (newData) => {
         // 更新节点数据
         updateNode(explorationNode.id, newData);
       }
     });
 
+    console.log('🔧 新探索节点创建完成:', explorationNode);
+
     // 添加探索节点到数据模型
     addNode(explorationNode);
 
-    // 将探索节点添加到源节点所在的分支中，确保正确插入到nodeIds数组
-    addNodeToBranch(sourceBranchId, explorationNode.id);
+    // 将探索节点插入到源节点所在的分支中，插入到当前节点之后
+    addNodeToBranch(sourceBranchId, explorationNode.id, insertIndex);
 
     // 更新源节点的连接关系，连接到新创建的探索节点
     updateNode(nodeId, {
       connections: [...(sourceNode.connections || []), explorationNode.id]
     });
 
-    // 重新排布节点
-    setTimeout(() => globalLayoutTree(), 100);
+    // 立即重新排布节点，确保新节点位置正确
+    console.log('🔧 开始重新布局探索节点...');
+    setTimeout(() => {
+      globalLayoutTree();
+      console.log('🔧 探索节点布局完成');
+    }, 50);
   };
 
   const handleGenerateImage = (nodeId) => {
@@ -2596,16 +3465,33 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   };
 
   const handleDeleteFrame = (nodeId) => {
+    console.log('🔧 handleDeleteFrame 被调用，节点ID:', nodeId);
 
     // 获取要删除的节点
     const nodeToDelete = getNodeById(nodeId);
     if (!nodeToDelete) {
+      console.warn('❌ 要删除的节点不存在:', nodeId);
       return;
     }
 
     // 从分支中移除节点
     if (nodeToDelete.branchId) {
       removeNodeFromBranch(nodeToDelete.branchId, nodeId);
+      
+      // 更新剩余节点的 nodeIndex
+      const branch = getBranchById(nodeToDelete.branchId);
+      if (branch) {
+        const remainingNodes = branch.nodeIds
+          .map(id => getNodeById(id))
+          .filter(Boolean);
+        
+        // 重新分配 nodeIndex
+        remainingNodes.forEach((node, index) => {
+          if (node.nodeIndex !== index) {
+            updateNode(node.id, { nodeIndex: index });
+          }
+        });
+      }
     }
 
     // 删除节点
@@ -2615,6 +3501,12 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     if (selectedFrameId === nodeId) {
       setSelectedFrameId(null);
     }
+
+    // 删除后重新排布，确保剩余节点位置正确
+    setTimeout(() => {
+      console.log('🔧 删除节点后重新布局...');
+      globalLayoutTree();
+    }, 100);
   };
 
   // 处理生成分支 - 使用新的树状数据结构
@@ -2718,8 +3610,6 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   const interviewDataList = [
     {
       id: 1,
-      title: "张敏 - 银行客户经理",
-      date: "2024-01-15",
       text: `张敏是一位35岁的银行客户经理，每天工作繁忙。她经常在下班后去超市采购食材，但总是面临时间紧张的问题。
 
 "当手机电量比我的耐心先耗尽时，任何精致菜谱都成了讽刺漫画。" 张敏这样描述她的烹饪应用使用体验。她希望能在超市现场快速找到适合的菜谱，但现有的应用推荐算法往往忽视了她实际的时间和库存限制。
@@ -2733,8 +3623,6 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     },
     {
       id: 2,
-      title: "李华 - IT工程师",
-      date: "2024-01-16",
       text: `李华是一名28岁的IT工程师，单身，经常加班到深夜。他对于烹饪应用的需求主要集中在简单易做的快手菜。
 
 "我需要的不是米其林三星的复杂菜谱，而是能在15分钟内搞定的营养餐。" 李华表示，他更关注食材的营养搭配和制作效率。
@@ -2748,8 +3636,6 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     },
     {
       id: 3,
-      title: "王芳 - 全职妈妈",
-      date: "2024-01-17",
       text: `王芳是一位32岁的全职妈妈，有两个孩子，日常需要为全家准备三餐。她对烹饪应用的需求更多样化，既要考虑营养搭配，也要照顾家人的口味偏好。
 
 "孩子们挑食，老公又想减肥，我自己还要控制血糖，一顿饭要满足这么多需求真的很头疼。" 王芳希望应用能够提供个性化的家庭菜谱推荐。
@@ -2786,22 +3672,22 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     };
   }, [isReferenceDropdownOpen]);
 
-  // 关键词类型配置 - 更新为新的5个维度
+  // 关键词类型配置 - 使用统一的颜色系统
   const keywordTypes = [
     {
       id: 'elements',
       name: '元素',
-      color: 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+      color: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
     },
     {
       id: 'user_traits',
       name: '用户特征',
-      color: 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+      color: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
     },
     {
       id: 'pain_points',
       name: '痛点',
-      color: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+      color: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
     },
     {
       id: 'goals',
@@ -3016,7 +3902,10 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       id: Date.now(),
       text: text,
       type: typeId,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      // 添加位置信息用于文本高亮
+      startIndex: currentInterview.text.indexOf(text),
+      endIndex: currentInterview.text.indexOf(text) + text.length
     };
     const updatedKeywords = [...selectedKeywords, newKeyword];
     setSelectedKeywords(updatedKeywords);
@@ -3029,22 +3918,159 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
 
   // 处理拖拽关键词到画布
   const handleDragStart = (e, keyword) => {
-    // 添加颜色信息到关键词数据
-    const keywordWithColor = {
+    // 根据关键词类型设置对应的颜色和气泡类型 - 使用统一的颜色系统
+    let originalColor = null;
+    let bubbleType = 'keyword';
+    
+    switch (keyword.type) {
+      case 'emotions':
+        originalColor = 'indigo';
+        bubbleType = 'immediateFeelings';
+        break;
+      case 'pain_points':
+        originalColor = 'red';
+        bubbleType = 'immediateFeelings';
+        break;
+      case 'goals':
+        originalColor = 'amber';
+        bubbleType = 'goalAdjustments';
+        break;
+      case 'user_traits':
+        originalColor = 'green';
+        bubbleType = 'actionTendencies';
+        break;
+      case 'elements':
+        originalColor = 'blue';
+        bubbleType = 'contextualFactors';
+        break;
+
+      default:
+        originalColor = 'blue';
+        bubbleType = 'keyword';
+    }
+
+    // 创建包含完整样式信息的关键词数据
+    const keywordWithStyle = {
       ...keyword,
-      originalColor: keyword.type === 'emotions' ? 'red' :
-        keyword.type === 'actions' ? 'blue' :
-          keyword.type === 'goals' ? 'green' :
-            keyword.type === 'contexts' ? 'yellow' :
-              keyword.type === 'pain_points' ? 'purple' :
-                keyword.type === 'user_traits' ? 'blue' :
-                  keyword.type === 'scenarios' ? 'yellow' : 'blue'
+      originalColor,
+      bubbleType,
+      // 添加拖拽源标识
+      dragSource: 'keywordPool'
     };
 
     // 设置多种数据格式以确保兼容性
-    e.dataTransfer.setData('keyword', JSON.stringify(keywordWithColor));
-    e.dataTransfer.setData('text/plain', JSON.stringify({ keywordData: keywordWithColor }));
-    e.dataTransfer.setData('application/json', JSON.stringify(keywordWithColor));
+    e.dataTransfer.setData('keyword', JSON.stringify(keywordWithStyle));
+    e.dataTransfer.setData('text/plain', JSON.stringify({ keywordData: keywordWithStyle }));
+    e.dataTransfer.setData('explorationBubble', JSON.stringify(keywordWithStyle));
+    e.dataTransfer.setData('application/json', JSON.stringify(keywordWithStyle));
+  };
+
+  // 渲染带有高亮的文本
+  const renderHighlightedText = (text, keywords) => {
+    if (!keywords || keywords.length === 0) {
+      return text.split('\n').map((paragraph, index) => (
+        <p key={index} className="mb-4">
+          {paragraph}
+        </p>
+      ));
+    }
+
+    // 按位置排序关键词，确保按顺序渲染
+    const sortedKeywords = [...keywords].sort((a, b) => a.startIndex - b.startIndex);
+    
+    // 创建段落数组
+    const paragraphs = text.split('\n');
+    
+    return paragraphs.map((paragraph, paragraphIndex) => {
+      // 计算当前段落在全文中的起始位置
+      const paragraphStartIndex = paragraphs.slice(0, paragraphIndex).join('\n').length + (paragraphIndex > 0 ? 1 : 0);
+      const paragraphEndIndex = paragraphStartIndex + paragraph.length;
+      
+      // 找到影响当前段落的关键词
+      const paragraphKeywords = sortedKeywords.filter(keyword => 
+        keyword.startIndex < paragraphEndIndex && keyword.endIndex > paragraphStartIndex
+      );
+      
+      if (paragraphKeywords.length === 0) {
+        return <p key={paragraphIndex} className="mb-4">{paragraph}</p>;
+      }
+      
+      // 渲染带有高亮的段落
+      return renderHighlightedParagraph(paragraph, paragraphKeywords, paragraphStartIndex, paragraphIndex);
+    });
+  };
+
+  // 渲染带有高亮的段落
+  const renderHighlightedParagraph = (paragraph, keywords, paragraphStartIndex, paragraphIndex) => {
+    const result = [];
+    let currentIndex = 0;
+    
+    // 按在段落中的位置排序关键词
+    const sortedKeywords = keywords.map(keyword => ({
+      ...keyword,
+      relativeStart: Math.max(0, keyword.startIndex - paragraphStartIndex),
+      relativeEnd: Math.min(paragraph.length, keyword.endIndex - paragraphStartIndex)
+    })).sort((a, b) => a.relativeStart - b.relativeStart);
+    
+    sortedKeywords.forEach((keyword, keywordIndex) => {
+      // 添加关键词前的普通文本
+      if (keyword.relativeStart > currentIndex) {
+        result.push(
+          <span key={`text-${paragraphIndex}-${keywordIndex}`}>
+            {paragraph.slice(currentIndex, keyword.relativeStart)}
+          </span>
+        );
+      }
+      
+      // 添加高亮的关键词
+      const keywordText = paragraph.slice(keyword.relativeStart, keyword.relativeEnd);
+      const highlightColor = getHighlightColor(keyword.type);
+      
+      result.push(
+        <span
+          key={`highlight-${paragraphIndex}-${keywordIndex}`}
+          className={`${highlightColor} px-1 rounded`}
+          title={`${keyword.type === 'elements' ? '元素' : 
+                   keyword.type === 'user_traits' ? '用户特征' : 
+                   keyword.type === 'pain_points' ? '痛点' : 
+                   keyword.type === 'goals' ? '目标' : 
+                   keyword.type === 'emotions' ? '情绪' : '关键词'}: ${keywordText}`}
+        >
+          {keywordText}
+        </span>
+      );
+      
+      currentIndex = keyword.relativeEnd;
+    });
+    
+    // 添加关键词后的普通文本
+    if (currentIndex < paragraph.length) {
+      result.push(
+        <span key={`text-${paragraphIndex}-end`}>
+          {paragraph.slice(currentIndex)}
+        </span>
+      );
+    }
+    
+    return <p key={paragraphIndex} className="mb-4">{result}</p>;
+  };
+
+  // 获取高亮颜色
+  const getHighlightColor = (type) => {
+    switch (type) {
+      case 'elements':
+        return 'bg-blue-200 text-blue-900';
+      case 'user_traits':
+        return 'bg-green-200 text-green-900';
+      case 'pain_points':
+        return 'bg-red-200 text-red-900';
+      case 'goals':
+        return 'bg-amber-200 text-amber-900';
+      case 'emotions':
+        return 'bg-indigo-200 text-indigo-900';
+      default:
+        return 'bg-gray-200 text-gray-900';
+    }
   };
 
   // 移除关键词
@@ -3059,33 +4085,141 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   };
 
   // 生成用户画像
-  const generatePersonas = () => {
-    // 模拟生成用户画像
-    const generatedPersonas = [
-      {
+  const generatePersonas = async () => {
+    if (selectedKeywords.length === 0) {
+      alert('请先提取一些关键词');
+      return;
+    }
+
+    try {
+      // 显示加载状态
+      setIsGeneratingPersonas(true);
+      
+      // 调用画像建模Agent API
+      const result = await generatePersonaFromInterview(currentInterview, selectedKeywords);
+      
+      console.log('🎯 画像建模Agent返回结果:', result);
+      
+      if (result.personas && result.personas.length > 0) {
+        // 转换API返回的数据格式为前端使用的格式
+        const convertedPersonas = result.personas.map(persona => ({
+          persona_name: persona.persona_name || '未命名用户',
+          persona_summary: persona.persona_summary || '',
+          memorable_quote: persona.memorable_quote || '',
+          appearance_characteristics: persona.Appearance_characteristics || '',
+          persona_details: {
+            age: persona.basic_profile?.age || '',
+            occupation: persona.basic_profile?.occupation || '',
+            lifestyle: persona.usage_context?.join(', ') || '',
+            pain_points: persona.domain_pain_points || [],
+            goals: persona.domain_goals_and_motivations || [],
+            behaviors: persona.general_behavior || [],
+            education: persona.basic_profile?.education || '',
+            city: persona.basic_profile?.city || '',
+            technology_literacy: persona.basic_profile?.technology_literacy || '',
+            devices: persona.basic_profile?.devices || [],
+            psychological_profile: persona.psychological_profile || [],
+            communication_style: persona.communication_style || [],
+            tool_expectations: persona.tool_expectations || []
+          }
+        }));
+        
+        setPersonas(convertedPersonas);
+        
+        // 如果API返回了气泡数据，更新关键词
+        if (result.bubbles) {
+          const newBubbles = [];
+          let bubbleId = Date.now();
+          
+          // 转换气泡数据为关键词格式
+          Object.entries(result.bubbles).forEach(([category, texts]) => {
+            texts.forEach(text => {
+              const keywordType = getBubbleCategoryType(category);
+              newBubbles.push({
+                id: bubbleId++,
+                text: text,
+                type: keywordType,
+                timestamp: new Date().toISOString(),
+                source: 'agent_generated'
+              });
+            });
+          });
+          
+          // 合并新生成的气泡到现有关键词中
+          setSelectedKeywords(prev => [...prev, ...newBubbles]);
+        }
+        
+        console.log('✅ 用户画像生成成功:', convertedPersonas);
+      } else {
+        console.warn('⚠️ API返回的用户画像数据为空');
+        // 生成默认画像
+        const defaultPersona = {
+          persona_name: '张敏',
+          persona_summary: '35岁银行客户经理，工作繁忙，注重效率',
+          memorable_quote: '当手机电量比我的耐心先耗尽时，任何精致菜谱都成了讽刺漫画',
+          appearance_characteristics: '穿着职业装，经常单手持手机推购物车',
+          persona_details: {
+            age: '35岁',
+            occupation: '银行客户经理',
+            lifestyle: '工作繁忙，经常加班',
+            education: '本科',
+            city: '北京',
+            technology_literacy: '中',
+            gender: '女',
+            pain_points: ['时间紧张', '手机电量焦虑', '效率流失放大镜效应'],
+            goals: ['快速找到适合的菜谱', '节省时间', '缓解育儿愧疚感'],
+            behaviors: ['单手持手机推购物车', '底线思维', '量化表达'],
+            psychological_profile: ['效率导向', '底线思维', '量化表达'],
+            communication_style: ['直接表达', '自嘲式幽默', '对营销话术敏感'],
+            tool_expectations: ['快速响应', '简单易用', '节省时间'],
+            devices: ['智能手机', '平板电脑']
+          }
+        };
+        setPersonas([defaultPersona]);
+      }
+    } catch (error) {
+      console.error('❌ 生成用户画像失败:', error);
+      alert('生成用户画像失败，请检查网络连接或稍后重试');
+      
+      // 生成默认画像作为备选
+      const defaultPersona = {
         persona_name: '张敏',
         persona_summary: '35岁银行客户经理，工作繁忙，注重效率',
+        memorable_quote: '当手机电量比我的耐心先耗尽时，任何精致菜谱都成了讽刺漫画',
+        appearance_characteristics: '穿着职业装，经常单手持手机推购物车',
         persona_details: {
           age: '35岁',
           occupation: '银行客户经理',
           lifestyle: '工作繁忙，经常加班',
+          education: '本科',
+          city: '北京',
+          technology_literacy: '中',
+          gender: '女',
           pain_points: ['时间紧张', '手机电量焦虑', '效率流失放大镜效应'],
           goals: ['快速找到适合的菜谱', '节省时间', '缓解育儿愧疚感'],
-          behaviors: ['单手持手机推购物车', '底线思维', '量化表达']
+          behaviors: ['单手持手机推购物车', '底线思维', '量化表达'],
+          psychological_profile: ['效率导向', '底线思维', '量化表达'],
+          communication_style: ['直接表达', '自嘲式幽默', '对营销话术敏感'],
+          tool_expectations: ['快速响应', '简单易用', '节省时间'],
+          devices: ['智能手机', '平板电脑']
         }
-      }
-    ];
-    setPersonas(generatedPersonas);
+      };
+      setPersonas([defaultPersona]);
+    } finally {
+      setIsGeneratingPersonas(false);
+    }
+  };
 
-    // 基于关键词自动补充一些气泡
-    const autoKeywords = [
-      { id: Date.now() + 1, text: '效率优先', type: 'goals', timestamp: new Date().toISOString() },
-      { id: Date.now() + 2, text: '时间管理', type: 'pain_points', timestamp: new Date().toISOString() },
-      { id: Date.now() + 3, text: '实用主义', type: 'user_traits', timestamp: new Date().toISOString() },
-      { id: Date.now() + 4, text: '深夜使用', type: 'scenarios', timestamp: new Date().toISOString() },
-      { id: Date.now() + 5, text: '焦虑情绪', type: 'emotions', timestamp: new Date().toISOString() }
-    ];
-    setSelectedKeywords(prev => [...prev, ...autoKeywords]);
+  // 将气泡类别转换为关键词类型
+  const getBubbleCategoryType = (category) => {
+    const categoryTypeMap = {
+      'persona': 'user_traits',
+      'context': 'elements',
+      'goal': 'goals',
+      'pain': 'pain_points',
+      'emotion': 'emotions'
+    };
+    return categoryTypeMap[category] || 'elements';
   };
 
   // 处理故事选择
@@ -3191,61 +4325,218 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
 
 
 
+  // 处理拖拽排序 - 使用新的树状数据结构
+  const handleFrameReorder = (draggedNodeId, insertIndex) => {
+    console.log('🔧 handleFrameReorder 被调用:', { draggedNodeId, insertIndex });
+    
+    // 获取拖拽的节点
+    const draggedNode = getNodeById(draggedNodeId);
+    if (!draggedNode) {
+      console.warn('❌ 拖拽节点不存在');
+      return;
+    }
+    
+    const branchId = draggedNode.branchId;
+    const branch = getBranchById(branchId);
+    if (!branch) {
+      console.warn('❌ 分支不存在');
+      return;
+    }
+    
+    // 获取当前节点在分支中的位置
+    const currentIndex = branch.nodeIds.indexOf(draggedNodeId);
+    if (currentIndex === -1) {
+      console.warn('❌ 拖拽节点在分支中的位置无效');
+      return;
+    }
+    
+    // 如果插入位置与当前位置相同，不需要移动
+    if (currentIndex === insertIndex) {
+      console.log('🔧 插入位置与当前位置相同，无需移动');
+      return;
+    }
+    
+    // 创建新的节点ID数组
+    const newNodeIds = [...branch.nodeIds];
+    
+    // 移除拖拽的节点
+    newNodeIds.splice(currentIndex, 1);
+    
+    // 调整插入位置（因为已经移除了一个节点）
+    const adjustedInsertIndex = currentIndex < insertIndex ? insertIndex - 1 : insertIndex;
+    
+    // 插入到目标位置
+    newNodeIds.splice(adjustedInsertIndex, 0, draggedNodeId);
+    
+    // 更新分支的节点顺序
+    updateBranch(branchId, { nodeIds: newNodeIds });
+    
+    // 重新分配所有节点的 nodeIndex
+    newNodeIds.forEach((nodeId, index) => {
+      const node = getNodeById(nodeId);
+      if (node && node.nodeIndex !== index) {
+        updateNode(nodeId, { nodeIndex: index });
+      }
+    });
+    
+    console.log('🔧 节点排序完成，新顺序:', newNodeIds);
+    
+    // 重新排布节点位置
+    setTimeout(() => {
+      console.log('🔧 开始重新布局排序后的节点...');
+      globalLayoutTree();
+    }, 100);
+  };
+
+  // 处理拖拽状态更新 - 确保左右两侧显示一致
+  const handleDragStateUpdate = (draggedNodeId, isDragging, targetIndex = null) => {
+    // 更新拖拽状态，确保左侧边栏和右侧内容区域显示一致
+    if (isDragging) {
+      // 开始拖拽时，清除之前的拖拽状态
+      setDraggedNodeId(draggedNodeId);
+      setDragTargetIndex(targetIndex);
+    } else {
+      // 结束拖拽时，清除拖拽状态
+      setDraggedNodeId(null);
+      setDragTargetIndex(null);
+    }
+  };
+
   // 处理节点移动 - 使用新的树状数据结构
   const handleMoveNode = (nodeId, direction) => {
+    console.log('🔧 handleMoveNode 被调用:', { nodeId, direction });
+    
     // 获取要移动的节点
     const nodeToMove = getNodeById(nodeId);
-    if (!nodeToMove || !nodeToMove.branchId) {
+    if (!nodeToMove) {
+      console.warn('❌ 要移动的节点不存在:', nodeId);
       return;
     }
 
-
-
-    // 获取节点所在的分支
-    const branch = getBranchById(nodeToMove.branchId);
-    if (!branch) {
+    // 检查是否是情景探索节点，如果是则不允许移动
+    if (nodeToMove.type === NODE_TYPES.EXPLORATION || nodeToMove.explorationData?.isExplorationNode) {
+      console.log('⚠️ 情景探索节点不允许移动:', nodeId);
       return;
     }
 
-    // 获取节点在分支中的位置
-    const currentIndex = branch.nodeIds.indexOf(nodeId);
-    if (currentIndex === -1) return;
+    // 如果节点有branchId，在分支内移动
+    if (nodeToMove.branchId) {
+      const branch = getBranchById(nodeToMove.branchId);
+      if (!branch) {
+        console.warn('❌ 分支不存在:', nodeToMove.branchId);
+        return;
+      }
 
-    let newIndex;
-    if (direction === 'left' && currentIndex > 0) {
-      newIndex = currentIndex - 1;
-    } else if (direction === 'right' && currentIndex < branch.nodeIds.length - 1) {
-      newIndex = currentIndex + 1;
+      // 获取节点在分支中的位置
+      const currentIndex = branch.nodeIds.indexOf(nodeId);
+      if (currentIndex === -1) {
+        console.warn('❌ 节点不在分支中:', nodeId);
+        return;
+      }
+
+      let newIndex;
+      if (direction === 'left' && currentIndex > 0) {
+        newIndex = currentIndex - 1;
+      } else if (direction === 'right' && currentIndex < branch.nodeIds.length - 1) {
+        newIndex = currentIndex + 1;
+      } else {
+        console.log('⚠️ 无法移动: 已经是边界位置');
+        return; // 无法移动
+      }
+
+      // 在分支内交换节点位置
+      const newBranch = {
+        ...branch,
+        nodeIds: [...branch.nodeIds]
+      };
+      [newBranch.nodeIds[currentIndex], newBranch.nodeIds[newIndex]] =
+        [newBranch.nodeIds[newIndex], newBranch.nodeIds[currentIndex]];
+
+      // 更新分支
+      updateBranch(branch.id, { nodeIds: newBranch.nodeIds });
+
+      // 更新节点的nodeIndex
+      const swappedNode = getNodeById(newBranch.nodeIds[currentIndex]);
+      const targetNode = getNodeById(newBranch.nodeIds[newIndex]);
+      
+      if (swappedNode) {
+        updateNode(swappedNode.id, { nodeIndex: currentIndex });
+      }
+      if (targetNode) {
+        updateNode(targetNode.id, { nodeIndex: newIndex });
+      }
+
+      console.log('🔧 分支内节点移动完成:', { from: currentIndex, to: newIndex });
     } else {
-      return; // 无法移动
+      // 如果节点没有branchId，在主线上移动
+      console.log('🔧 在主线上移动节点:', nodeId);
+      
+      // 获取所有主线节点（没有branchId的节点）
+      const mainLineNodes = storyData.filter(node => !node.branchId);
+      const currentIndex = mainLineNodes.findIndex(node => node.id === nodeId);
+      
+      if (currentIndex === -1) {
+        console.warn('❌ 节点不在主线中:', nodeId);
+        return;
+      }
+
+      let newIndex;
+      if (direction === 'left' && currentIndex > 0) {
+        newIndex = currentIndex - 1;
+      } else if (direction === 'right' && currentIndex < mainLineNodes.length - 1) {
+        newIndex = currentIndex + 1;
+      } else {
+        console.log('⚠️ 无法移动: 已经是边界位置');
+        return; // 无法移动
+      }
+
+      // 交换主线节点的nodeIndex
+      const currentNode = mainLineNodes[currentIndex];
+      const targetNode = mainLineNodes[newIndex];
+      
+      if (currentNode && targetNode) {
+        updateNode(currentNode.id, { nodeIndex: newIndex });
+        updateNode(targetNode.id, { nodeIndex: currentIndex });
+        console.log('🔧 主线节点移动完成:', { from: currentIndex, to: newIndex });
+      }
     }
-
-    // 在分支内交换节点位置
-    const newBranch = {
-      ...branch,
-      nodeIds: [...branch.nodeIds]
-    };
-    [newBranch.nodeIds[currentIndex], newBranch.nodeIds[newIndex]] =
-      [newBranch.nodeIds[newIndex], newBranch.nodeIds[currentIndex]];
-
-    // 更新分支
-    updateBranch(branch.id, { nodeIds: newBranch.nodeIds });
 
     // 重新排布节点
-    setTimeout(() => globalLayoutTree(), 0);
+    setTimeout(() => {
+      console.log('🔧 开始重新布局...');
+      globalLayoutTree();
+    }, 100);
   };
 
   // 处理节点删除 - 使用新的树状数据结构
   const handleDeleteNode = (nodeId) => {
+    console.log('🔧 handleDeleteNode 被调用，节点ID:', nodeId);
+    
     // 获取要删除的节点
     const nodeToDelete = getNodeById(nodeId);
     if (!nodeToDelete) {
+      console.warn('❌ 要删除的节点不存在:', nodeId);
       return;
     }
 
     // 从分支中移除节点
     if (nodeToDelete.branchId) {
       removeNodeFromBranch(nodeToDelete.branchId, nodeId);
+      
+      // 更新剩余节点的 nodeIndex
+      const branch = getBranchById(nodeToDelete.branchId);
+      if (branch) {
+        const remainingNodes = branch.nodeIds
+          .map(id => getNodeById(id))
+          .filter(Boolean);
+        
+        // 重新分配 nodeIndex
+        remainingNodes.forEach((node, index) => {
+          if (node.nodeIndex !== index) {
+            updateNode(node.id, { nodeIndex: index });
+          }
+        });
+      }
     }
 
     // 删除节点
@@ -3257,7 +4548,10 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     }
 
     // 删除后重新排布
-    setTimeout(() => globalLayoutTree(), 0);
+    setTimeout(() => {
+      console.log('🔧 删除节点后重新布局...');
+      globalLayoutTree();
+    }, 100);
   };
 
   // 处理文本保存 - 使用新的树状数据结构
@@ -3272,10 +4566,13 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
 
   // 处理节点状态变化 - 使用新的树状数据结构
   const handleNodeStateChange = (nodeId, newState) => {
+    console.log('🔧 handleNodeStateChange 被调用:', { nodeId, newState });
+    
+    // 更新节点数据
     updateNode(nodeId, { state: newState });
     
     // 更新节点状态并触发动态重新布局
-    const isExpanded = newState !== 'collapsed';
+    const isExpanded = newState === 'expanded' || newState === 'editing' || newState === 'generating';
     updateNodeState(nodeId, newState, isExpanded);
   };
 
@@ -3339,13 +4636,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
           </div>
         </div>
 
-        {/* 当前访谈记录信息 */}
-        <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
-          <div className="flex items-center justify-between">
-            <h3 className="font-medium text-gray-800">{currentInterview.title}</h3>
-            <span className="text-sm text-gray-500">{currentInterview.date}</span>
-          </div>
-        </div>
+
 
         {/* 访谈内容区域 - 可滚动 */}
         <div className="flex-1 overflow-y-auto p-3">
@@ -3366,11 +4657,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
                 />
               ))}
             </div>
-            {currentInterview.text.split('\n').map((paragraph, index) => (
-              <p key={index} className="mb-4">
-                {paragraph}
-              </p>
-            ))}
+            {renderHighlightedText(currentInterview.text, selectedKeywords)}
           </div>
 
           <div className="mt-4 text-sm text-gray-600">
@@ -3420,10 +4707,17 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
         <div className="p-4 border-t border-gray-100">
           <button
             onClick={generatePersonas}
-            disabled={selectedKeywords.length === 0}
-            className="w-full bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            disabled={selectedKeywords.length === 0 || isGeneratingPersonas}
+            className="w-full bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
           >
-            生成用户画像
+            {isGeneratingPersonas ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                生成中...
+              </>
+            ) : (
+              '生成用户画像'
+            )}
           </button>
         </div>
       </div>
@@ -3467,7 +4761,39 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
                       <span className="text-gray-500">生活方式</span>
                       <span className="font-medium">{persona.persona_details.lifestyle}</span>
                     </div>
+                    {persona.persona_details.education && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-500">教育程度</span>
+                        <span className="font-medium">{persona.persona_details.education}</span>
+                      </div>
+                    )}
+                    {persona.persona_details.city && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-500">城市</span>
+                        <span className="font-medium">{persona.persona_details.city}</span>
+                      </div>
+                    )}
                   </div>
+
+                  {/* 代表性话语 */}
+                  {persona.memorable_quote && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">代表性话语</div>
+                      <div className="text-xs bg-yellow-50 text-yellow-700 px-2 py-1 rounded border border-yellow-200 italic">
+                        "{persona.memorable_quote}"
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 外观特征 */}
+                  {persona.appearance_characteristics && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">外观特征</div>
+                      <div className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded border border-gray-200">
+                        {persona.appearance_characteristics}
+                      </div>
+                    </div>
+                  )}
 
                   {/* 显示所有维度信息 */}
                   {persona.persona_details.pain_points && persona.persona_details.pain_points.length > 0 && (
@@ -3557,6 +4883,83 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
                             {tech}
                           </div>
                         ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 新增字段显示 */}
+                  {persona.persona_details.psychological_profile && persona.persona_details.psychological_profile.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">心理特征</div>
+                      <div className="space-y-1">
+                        {persona.persona_details.psychological_profile.map((profile, idx) => (
+                          <div key={idx} className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-200">
+                            {profile}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {persona.persona_details.communication_style && persona.persona_details.communication_style.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">沟通风格</div>
+                      <div className="space-y-1">
+                        {persona.persona_details.communication_style.map((style, idx) => (
+                          <div key={idx} className="text-xs bg-cyan-50 text-cyan-700 px-2 py-1 rounded border border-cyan-200">
+                            {style}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {persona.persona_details.tool_expectations && persona.persona_details.tool_expectations.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">工具期望</div>
+                      <div className="space-y-1">
+                        {persona.persona_details.tool_expectations.map((expectation, idx) => (
+                          <div key={idx} className="text-xs bg-orange-50 text-orange-700 px-2 py-1 rounded border border-orange-200">
+                            {expectation}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {persona.persona_details.devices && persona.persona_details.devices.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">使用设备</div>
+                      <div className="space-y-1">
+                        {persona.persona_details.devices.map((device, idx) => (
+                          <div key={idx} className="text-xs bg-teal-50 text-teal-700 px-2 py-1 rounded border border-teal-200">
+                            {device}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 关键词标签 */}
+                  {persona.keywords && persona.keywords.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">关键词标签</div>
+                      <div className="flex flex-wrap gap-1">
+                        {persona.keywords.map((keyword, idx) => (
+                          <div key={idx} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded border border-gray-300">
+                            {keyword}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 技术熟练度 */}
+                  {persona.persona_details.technology_literacy && (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-gray-700 mb-1">技术熟练度</div>
+                      <div className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200">
+                        {persona.persona_details.technology_literacy}
                       </div>
                     </div>
                   )}
@@ -3710,24 +5113,40 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
                 return;
               }
 
-              // 计算新节点的基准位置
+              // 如果有选中的节点，插入到其右侧；否则添加到分支末尾
+              let insertIndex = 'end';
               let newBaseX;
-              if (rootBranch.nodeIds.length === 0) {
-                // 第一个节点，使用画布中心
-                const sidebarWidth = 288;
-                const canvasWidth = window.innerWidth - sidebarWidth;
-                const nodeWidth = DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.COLLAPSED;
-                newBaseX = sidebarWidth + (canvasWidth / 2) - (nodeWidth / 2);
-              } else {
-                // 基于前一个节点计算基准位置
-                const lastNodeId = rootBranch.nodeIds[rootBranch.nodeIds.length - 1];
-                const lastNode = getNodeById(lastNodeId);
-                if (lastNode) {
-                  const lastNodeWidth = getNodeDisplayWidth(lastNode); // 使用显示宽度确保一致性
-                  const dynamicGap = calculateDynamicGap(lastNode, rootBranch.nodeIds.length - 1, rootBranch.nodeIds.map(id => getNodeById(id)).filter(Boolean));
-                  newBaseX = lastNode.pos.x + lastNodeWidth + dynamicGap;
+              
+              if (selectedFrameId) {
+                // 插入到选中节点右侧
+                const selectedNode = getNodeById(selectedFrameId);
+                if (selectedNode && selectedNode.branchId === rootBranch.id) {
+                  insertIndex = rootBranch.nodeIds.indexOf(selectedFrameId) + 1;
+                  const selectedNodeWidth = getNodeDisplayWidth(selectedNode);
+                  const dynamicGap = calculateDynamicGap(selectedNode, rootBranch.nodeIds.indexOf(selectedFrameId), rootBranch.nodeIds.map(id => getNodeById(id)).filter(Boolean));
+                  newBaseX = selectedNode.pos.x + selectedNodeWidth + dynamicGap;
+                }
+              }
+              
+              if (insertIndex === 'end') {
+                // 添加到分支末尾
+                if (rootBranch.nodeIds.length === 0) {
+                  // 第一个节点，使用画布中心
+                  const sidebarWidth = 288;
+                  const canvasWidth = window.innerWidth - sidebarWidth;
+                  const nodeWidth = DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.COLLAPSED;
+                  newBaseX = sidebarWidth + (canvasWidth / 2) - (nodeWidth / 2);
                 } else {
-                  newBaseX = 100; // 默认位置
+                  // 基于前一个节点计算基准位置
+                  const lastNodeId = rootBranch.nodeIds[rootBranch.nodeIds.length - 1];
+                  const lastNode = getNodeById(lastNodeId);
+                  if (lastNode) {
+                    const lastNodeWidth = getNodeDisplayWidth(lastNode);
+                    const dynamicGap = calculateDynamicGap(lastNode, rootBranch.nodeIds.length - 1, rootBranch.nodeIds.map(id => getNodeById(id)).filter(Boolean));
+                    newBaseX = lastNode.pos.x + lastNodeWidth + dynamicGap;
+                  } else {
+                    newBaseX = 100;
+                  }
                 }
               }
 
@@ -3737,19 +5156,19 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
                 label: `分镜 ${rootBranch.nodeIds.length + 1}`,
                 text: '',
                 image: null,
-                pos: { x: newBaseX, y: 150 }, // 使用计算出的基准位置
-                baseX: newBaseX, // 设置基准位置
+                pos: { x: newBaseX, y: 150 },
+                baseX: newBaseX,
                 connections: [],
                 styleName: selectedStyle,
                 branchId: rootBranch.id,
-                nodeIndex: rootBranch.nodeIds.length
+                nodeIndex: typeof insertIndex === 'number' ? insertIndex : rootBranch.nodeIds.length
               };
 
               // 添加新节点到数据模型
               addNode(newFrame);
 
               // 将新节点添加到根分支
-              addNodeToBranch(rootBranch.id, newFrameId);
+              addNodeToBranch(rootBranch.id, newFrameId, insertIndex);
 
               // 如果有前一个节点，将新节点连接到前一个节点
               if (rootBranch.nodeIds.length > 0) {
@@ -3815,7 +5234,10 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
                   <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                   </svg>
-                  <span className="font-medium text-gray-800 text-sm">故事结构</span>
+                  <div>
+                    <span className="font-medium text-gray-800 text-sm">故事结构</span>
+                    <p className="text-xs text-gray-500">拖拽分镜节点可调整顺序</p>
+                  </div>
                 </div>
                 <button
                   onClick={() => setIsSidebarCollapsed(v => !v)}
@@ -3830,6 +5252,10 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
                     storyModel={storyModel}
                     selectedFrameId={selectedFrameId}
                     onFrameSelect={handleFrameSelect}
+                    onFrameReorder={handleFrameReorder}
+                    onDragStateUpdate={handleDragStateUpdate}
+                    draggedNodeId={draggedNodeId}
+                    dragTargetIndex={dragTargetIndex}
                   />
                 </div>
               )}
@@ -3883,8 +5309,8 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
                     })}
                   </div>
 
-                  {/* 关键词气泡 - 滚动容器 */}
-                  <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400 min-h-0">
+                  {/* 关键词气泡 - 无滚动条 */}
+                  <div className="flex-1 overflow-hidden min-h-0">
                     <div className="p-3 pt-0 pb-4 space-y-3">
                       {keywordTypes.map(type => {
                         const typeKeywords = selectedKeywords.filter(k => k.type === type.id);
@@ -3894,10 +5320,13 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
                         return (
                           <div key={type.id} className="break-inside-avoid">
                             <h3 className="text-xs font-medium text-gray-700 mb-2 flex items-center">
-                              <span className={`w-2 h-2 rounded-full mr-2 ${type.color.includes('blue') ? 'bg-blue-400' :
-                                type.color.includes('green') ? 'bg-green-400' :
-                                  type.color.includes('red') ? 'bg-red-400' :
-                                    type.color.includes('yellow') ? 'bg-yellow-400' : 'bg-purple-400'}`}></span>
+                              <span className={`w-2 h-2 rounded-full mr-2 ${
+                                type.id === 'elements' ? 'bg-blue-400' :
+                                type.id === 'user_traits' ? 'bg-green-400' :
+                                type.id === 'pain_points' ? 'bg-red-400' :
+                                type.id === 'goals' ? 'bg-amber-400' :
+                                type.id === 'emotions' ? 'bg-indigo-400' : 'bg-gray-400'
+                              }`}></span>
                               {type.name}
                             </h3>
                             <div className="flex flex-wrap gap-1.5">

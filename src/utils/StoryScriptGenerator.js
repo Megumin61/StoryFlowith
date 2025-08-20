@@ -110,7 +110,7 @@ export class StoryScriptGenerator {
                 goals.push(this.t.goalTemplate.replace('{action}', this.extractActionFromDescription(frame.description)));
             }
         });
-        return goals.length > 0 ? goals.join('£»') : this.t.defaultGoal;
+        return goals.length > 0 ? goals.join('ï¿½ï¿½') : this.t.defaultGoal;
     }
 
     extractUsageScenarios(storyData) {
@@ -124,7 +124,7 @@ export class StoryScriptGenerator {
             }
         });
         const uniqueScenarios = [...new Set(scenarios)];
-        return uniqueScenarios.length > 0 ? uniqueScenarios.join('¡¢') : this.t.defaultScenario;
+        return uniqueScenarios.length > 0 ? uniqueScenarios.join('ï¿½ï¿½') : this.t.defaultScenario;
     }
 
     extractEmotionalJourney(storyData) {
@@ -135,7 +135,7 @@ export class StoryScriptGenerator {
                 <div class="flex items-center space-x-3">
                     <span class="flex items-center justify-center w-6 h-6 rounded-full bg-purple-200 text-purple-700 font-bold text-sm">${index + 1}</span>
                     <span class="font-medium">${title}</span>
-                    <span class="text-purple-600">¡ú ${emotion}</span>
+                    <span class="text-purple-600">ï¿½ï¿½ ${emotion}</span>
                 </div>
             `;
         }).join('');
@@ -166,17 +166,17 @@ export class StoryScriptGenerator {
     }
 
     extractActionFromDescription(description) {
-        if (description.includes('¹ÜÀí')) return this.t.actions.manage;
-        if (description.includes('ÕûÀí')) return this.t.actions.organize;
-        if (description.includes('Ê¶±ð')) return this.t.actions.recognize;
+        if (description.includes('ï¿½ï¿½ï¿½ï¿½')) return this.t.actions.manage;
+        if (description.includes('ï¿½ï¿½ï¿½ï¿½')) return this.t.actions.organize;
+        if (description.includes('Ê¶ï¿½ï¿½')) return this.t.actions.recognize;
         return this.t.actions.operate;
     }
 
     extractLocationFromDescription(description) {
-        if (description.includes('³ö×â³µ')) return this.t.locations.taxi;
-        if (description.includes('¾Æµê')) return this.t.locations.hotel;
-        if (description.includes('°ì¹«ÊÒ')) return this.t.locations.office;
-        if (description.includes('¼Ò')) return this.t.locations.home;
+        if (description.includes('ï¿½ï¿½ï¿½â³µ')) return this.t.locations.taxi;
+        if (description.includes('ï¿½Æµï¿½')) return this.t.locations.hotel;
+        if (description.includes('ï¿½ì¹«ï¿½ï¿½')) return this.t.locations.office;
+        if (description.includes('ï¿½ï¿½')) return this.t.locations.home;
         return null;
     }
 } 

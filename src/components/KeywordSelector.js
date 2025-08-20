@@ -67,11 +67,11 @@ function KeywordSelector({
       // 选中状态：使用对应颜色的深色版本
       switch (type.id) {
         case 'elements':
-          return `${baseStyle} bg-slate-100 text-slate-800 border-2 border-slate-300 shadow-md scale-105`;
+          return `${baseStyle} bg-blue-100 text-blue-800 border-2 border-blue-300 shadow-md scale-105`;
         case 'user_traits':
-          return `${baseStyle} bg-stone-100 text-stone-800 border-2 border-stone-300 shadow-md scale-105`;
+          return `${baseStyle} bg-green-100 text-green-800 border-2 border-green-300 shadow-md scale-105`;
         case 'pain_points':
-          return `${baseStyle} bg-rose-100 text-rose-800 border-2 border-rose-300 shadow-md scale-105`;
+          return `${baseStyle} bg-red-100 text-red-800 border-2 border-red-300 shadow-md scale-105`;
         case 'goals':
           return `${baseStyle} bg-amber-100 text-amber-800 border-2 border-amber-300 shadow-md scale-105`;
         case 'emotions':
@@ -83,11 +83,11 @@ function KeywordSelector({
       // 默认状态：使用对应颜色的浅色版本
       switch (type.id) {
         case 'elements':
-          return `${baseStyle} bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100 hover:border-slate-300 hover:shadow-sm hover:scale-102`;
+          return `${baseStyle} bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 hover:border-blue-300 hover:shadow-sm hover:scale-102`;
         case 'user_traits':
-          return `${baseStyle} bg-stone-50 text-stone-700 border border-stone-200 hover:bg-stone-100 hover:border-stone-300 hover:shadow-sm hover:scale-102`;
+          return `${baseStyle} bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 hover:border-green-300 hover:shadow-sm hover:scale-102`;
         case 'pain_points':
-          return `${baseStyle} bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 hover:border-rose-300 hover:shadow-sm hover:scale-102`;
+          return `${baseStyle} bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 hover:border-red-300 hover:shadow-sm hover:scale-102`;
         case 'goals':
           return `${baseStyle} bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 hover:border-amber-300 hover:shadow-sm hover:scale-102`;
         case 'emotions':

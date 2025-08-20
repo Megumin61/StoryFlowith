@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coze API React 组件测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-button {
+            background: #1890ff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .test-button:hover {
+            background: #40a9ff;
+        }
+        .test-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .error {
+            background: #fff2f0;
+            border: 1px solid #ffccc7;
+            color: #cf1322;
+        }
+        .success {
+            background: #f6ffed;
+            border: 1px solid #b7eb8f;
+            color: #389e0d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Coze API React 组件测试</h1>
+        
+        <div class="test-section">
+            <h3>1. 测试代理服务器连接</h3>
+            <button class="test-button" onclick="testProxyConnection()">测试代理连接</button>
+            <div id="proxy-result" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>2. 测试Coze API调用</h3>
+            <button class="test-button" onclick="testCozeAPI()">测试API调用</button>
+            <div id="api-result" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>3. 测试流式响应</h3>
+            <button class="test-button" onclick="testStreamAPI()">测试流式响应</button>
+            <div id="stream-result" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>4. 查看控制台日志</h3>
+            <p>请打开浏览器开发者工具的控制台查看详细日志信息。</p>
+            <button class="test-button" onclick="clearResults()">清除结果</button>
+        </div>
+    </div>
+
+    <script>
+        const PROXY_URL = 'http://localhost:3003/api/coze/chat';
+        const API_TOKEN = 'pat_jh83evgpcgz12NkqIbVDLqKp1KaBxK88ypjoI1rR9hjXwW4p1KaBxK88ypjoI1rR9hjXwW4aKSSUKg9C8NPBA4q1';
+        const BOT_ID = '7537689196866158618';
+
+        function showResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `result ${type}`;
+        }
+
+        async function testProxyConnection() {
+            try {
+                showResult('proxy-result', '正在测试代理服务器连接...', 'info');
+                
+                const response = await fetch(PROXY_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${API_TOKEN}`
+                    },
+                    body: JSON.stringify({
+                        bot_id: BOT_ID,
+                        user_id: '123456789',
+                        stream: false,
+                        additional_messages: [{
+                            content: '测试连接',
+                            content_type: 'text',
+                            role: 'user',
+                            type: 'question'
+                        }],
+                        parameters: {}
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('proxy-result', `✅ 代理连接成功!\n状态: ${response.status}\n响应: ${JSON.stringify(data, null, 2)}`, 'success');
+                } else {
+                    const errorText = await response.text();
+                    showResult('proxy-result', `❌ 代理连接失败!\n状态: ${response.status}\n错误: ${errorText}`, 'error');
+                }
+            } catch (error) {
+                showResult('proxy-result', `❌ 代理连接错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function testCozeAPI() {
+            try {
+                showResult('api-result', '正在测试Coze API调用...', 'info');
+                
+                const response = await fetch(PROXY_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${API_TOKEN}`
+                    },
+                    body: JSON.stringify({
+                        bot_id: BOT_ID,
+                        user_id: '123456789',
+                        stream: false,
+                        additional_messages: [{
+                            content: '你好，请介绍一下你自己',
+                            content_type: 'text',
+                            role: 'user',
+                            type: 'question'
+                        }],
+                        parameters: {}
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('api-result', `✅ API调用成功!\n状态: ${response.status}\n响应: ${JSON.stringify(data, null, 2)}`, 'success');
+                } else {
+                    const errorText = await response.text();
+                    showResult('api-result', `❌ API调用失败!\n状态: ${response.status}\n错误: ${errorText}`, 'error');
+                }
+            } catch (error) {
+                showResult('api-result', `❌ API调用错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function testStreamAPI() {
+            try {
+                showResult('stream-result', '正在测试流式响应...', 'info');
+                
+                const response = await fetch(PROXY_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${API_TOKEN}`
+                    },
+                    body: JSON.stringify({
+                        bot_id: BOT_ID,
+                        user_id: '123456789',
+                        stream: true,
+                        additional_messages: [{
+                            content: '请写一首关于春天的诗',
+                            content_type: 'text',
+                            role: 'user',
+                            type: 'question'
+                        }],
+                        parameters: {}
+                    })
+                });
+
+                if (response.ok) {
+                    showResult('stream-result', `✅ 流式响应连接成功!\n状态: ${response.status}\n正在接收数据...`, 'success');
+                    
+                    // 处理流式响应
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let content = '';
+                    
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        const chunk = decoder.decode(value);
+                        console.log('收到流式数据:', chunk);
+                        
+                        const lines = chunk.split('\n');
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const data = JSON.parse(line.slice(6));
+                                    if (data.content) {
+                                        content += data.content;
+                                        showResult('stream-result', `✅ 流式响应成功!\n状态: ${response.status}\n内容: ${content}`, 'success');
+                                    }
+                                } catch (e) {
+                                    console.log('解析流式数据出错:', e);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    const errorText = await response.text();
+                    showResult('stream-result', `❌ 流式响应失败!\n状态: ${response.status}\n错误: ${errorText}`, 'error');
+                }
+            } catch (error) {
+                showResult('stream-result', `❌ 流式响应错误: ${error.message}`, 'error');
+            }
+        }
+
+        function clearResults() {
+            document.querySelectorAll('.result').forEach(el => {
+                el.textContent = '';
+                el.className = 'result';
+            });
+        }
+
+        // 页面加载完成后自动测试代理连接
+        window.addEventListener('load', () => {
+            console.log('🚀 Coze API 测试页面已加载');
+            console.log('📋 配置信息:', {
+                proxyUrl: PROXY_URL,
+                botId: BOT_ID,
+                apiToken: API_TOKEN.substring(0, 20) + '...'
+            });
+        });
+    </script>
+</body>
+</html> 

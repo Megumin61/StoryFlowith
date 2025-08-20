@@ -74,6 +74,7 @@ const NodeRenderer = ({
     <StoryNode
       data={{
         ...node,
+        onNodeClick, // 添加 onNodeClick 属性
         onMoveNode,
         onDeleteNode: onNodeDelete,
         onTextSave: (text) => onTextSave(node.id, text),

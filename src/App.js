@@ -11,11 +11,13 @@ import JourneyMap from './components/JourneyMap';
 import StoryTree from './components/StoryTree';
 import StoryScript from './components/StoryScript';
 import UserPersonas from './components/UserPersonas';
-import RefinementPage from './components/RefinementPage'; // 新：入新页面组件
+
 import StoryboardTest from './components/StoryboardTest'; // Է־
 import FalaiTest from './components/FalaiTest'; // 导入FalAI测试组件
 import ExplorationNodeTest from './components/ExplorationNodeTest'; // 导入探索节点测试组件
 import StoryTreeTest from './components/StoryTreeTest'; // 导入故事树测试组件
+import CozeTest from './components/CozeTest'; // 导入真正的Coze测试组件
+import SimpleTestPage from './components/SimpleTestPage'; // 导入简单测试页面
 import config from './config';
 import textUtils from './utils/textUtils';
 import './App.css';
@@ -32,11 +34,13 @@ function AppContent() {
   const [nextFrameId, setNextFrameId] = useState(5);
   const [selectedStyle, setSelectedStyle] = useState('写实');
   const [showIdea, setShowIdea] = useState(false); // 修改为默认不显示想法输入页
-  const [showRefinementPage, setShowRefinementPage] = useState(false);
-  const [showStoryboardTest, setShowStoryboardTest] = useState(true); // 修改为默认显示测试分镜页
+
+  const [showStoryboardTest, setShowStoryboardTest] = useState(true); // 修改为默认显示用户访谈记录提取页面作为主页面
   const [showFalaiTest, setShowFalaiTest] = useState(false);
   const [showExplorationNodeTest, setShowExplorationNodeTest] = useState(false); // 添加探索节点测试状态
   const [showStoryTreeTest, setShowStoryTreeTest] = useState(false); // 添加故事树测试状态
+  const [showCozeTest, setShowCozeTest] = useState(false); // 添加Coze测试状态
+  const [showSimpleTestPage, setShowSimpleTestPage] = useState(false); // 修改为默认不显示简单测试页面
   const [showJourneyMap, setShowJourneyMap] = useState(false);
   const [showStoryScript, setShowStoryScript] = useState(false);
   const [showUserPersonas, setShowUserPersonas] = useState(false);
@@ -129,7 +133,7 @@ function AppContent() {
       setSelectedFrameId(initialFrames[0].id);
     }
     setShowIdea(false);
-    setShowRefinementPage(true); // 显示新页
+
   };
 
   const handleTestStoryboard = (idea) => { // �������������Է־���ť���
@@ -138,15 +142,10 @@ function AppContent() {
     setShowStoryboardTest(true); // ��ʾ���Է־�����
   };
 
-  const handleCloseStoryboardTest = () => { // �������رղ��Է־�����
-    setShowStoryboardTest(false);
-    setShowIdea(true); // ���ص���ʼ����
-  };
-
-  const handleRefinementComplete = (refinedStory, personas) => { // 俔�：�理新页面的完成事�
-    // 注意：目� refinedStory 变�文本，并朧�析。storyData 保持不变
-    setUserPersonas(personas);
-    setShowRefinementPage(false);
+  const handleCloseStoryboardTest = () => { // 添加关闭测试分镜页的处理函数
+    // 不关闭，保持作为主页面
+    // setShowStoryboardTest(false);
+    // setShowSimpleTestPage(true); // 返回到初始页面
   };
 
   const handleTestFalai = () => {
@@ -156,7 +155,7 @@ function AppContent() {
 
   const handleCloseFalaiTest = () => {
     setShowFalaiTest(false);
-    setShowIdea(true);
+    setShowSimpleTestPage(true);
   };
 
   const handleTestExplorationNode = () => {
@@ -166,7 +165,7 @@ function AppContent() {
 
   const handleCloseExplorationNodeTest = () => {
     setShowExplorationNodeTest(false);
-    setShowIdea(true);
+    setShowSimpleTestPage(true);
   };
 
   const handleTestStoryTree = () => {
@@ -176,7 +175,46 @@ function AppContent() {
 
   const handleCloseStoryTreeTest = () => {
     setShowStoryTreeTest(false);
-    setShowIdea(true);
+    setShowSimpleTestPage(true);
+  };
+
+  const handleTestCoze = () => {
+    setShowIdea(false);
+    setShowCozeTest(true);
+    setShowSimpleTestPage(false);
+  };
+
+  const handleCloseCozeTest = () => {
+    setShowCozeTest(false);
+    setShowSimpleTestPage(true);
+  };
+
+  const handleSimpleTestPageNavigate = (testId) => {
+    setShowSimpleTestPage(false);
+    switch (testId) {
+      case 'storyboard':
+        setShowStoryboardTest(true);
+        break;
+      case 'falai':
+        setShowFalaiTest(true);
+        break;
+      case 'exploration':
+        setShowExplorationNodeTest(true);
+        break;
+      case 'storytree':
+        setShowStoryTreeTest(true);
+        break;
+      case 'coze':
+        setShowCozeTest(true);
+        break;
+      default:
+        break;
+    }
+  };
+
+  const handleCloseSimpleTestPage = () => {
+    setShowSimpleTestPage(false);
+    setShowStoryboardTest(true);
   };
 
   const handleFrameSelect = (id) => {
@@ -266,7 +304,7 @@ function AppContent() {
               <span className="text-xl font-bold text-gray-900">{t.app.title}</span>
             </div>
             <AnimatePresence>
-            {!showIdea && !showRefinementPage && !showStoryboardTest && (
+            {!showIdea && !showStoryboardTest && (
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -309,6 +347,13 @@ function AppContent() {
                   <Map className="w-4 h-4" />
                   <span>分支关系测试</span>
                 </button>
+                <button
+                  className="flex items-center space-x-2 text-sm font-medium text-white bg-purple-600 px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                  onClick={handleTestCoze}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>测试Coze页面</span>
+                </button>
               </motion.div>
             )}
             </AnimatePresence>
@@ -318,6 +363,15 @@ function AppContent() {
 
       <main className="flex-grow relative overflow-hidden">
         <AnimatePresence>
+          {showSimpleTestPage && (
+            <SimpleTestPage
+              onClose={handleCloseSimpleTestPage}
+              onNavigateTo={handleSimpleTestPageNavigate}
+            />
+          )}
+        </AnimatePresence>
+        
+        <AnimatePresence>
           {showIdea && (
             <IdeaModal 
               onGenerate={handleGenerateCanvas} 
@@ -325,19 +379,11 @@ function AppContent() {
               onTestFalai={handleTestFalai} // 添加FalAI测试按钮的处理函数
               onTestExplorationNode={handleTestExplorationNode} // 添加探索节点测试按钮的处理函数
               onTestStoryTree={handleTestStoryTree} // 添加故事树测试按钮的处理函数
+              onTestCoze={handleTestCoze} // 添加Coze测试按钮的处理函数
             />
           )}
         </AnimatePresence>
         
-        <AnimatePresence>
-          {showRefinementPage && (
-            <RefinementPage
-              initialStoryText={userInput} // 传递原始用户输入文�
-              onComplete={handleRefinementComplete}
-            />
-          )}
-        </AnimatePresence>
-
         <AnimatePresence>
           {showStoryboardTest && (
             <motion.div
@@ -348,7 +394,7 @@ function AppContent() {
             >
               <StoryboardTest
                 initialStoryText=""
-                onClose={handleCloseStoryboardTest}
+                onClose={() => {}} // 传递空函数，不执行任何关闭操作
               />
             </motion.div>
           )}
@@ -417,14 +463,35 @@ function AppContent() {
           )}
         </AnimatePresence>
 
+        <AnimatePresence>
+          {showCozeTest && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-white"
+            >
+              <div className="absolute top-4 right-4">
+                <button
+                  onClick={handleCloseCozeTest}
+                  className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <CozeTest />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <motion.div
           id="main-ui"
           className="flex h-full w-full"
           initial={{ opacity: 0 }}
-          animate={{ opacity: showIdea || showRefinementPage || showStoryboardTest ? 0 : 1 }}
-          style={{ pointerEvents: showIdea || showRefinementPage || showStoryboardTest ? 'none' : 'auto' }}
+          animate={{ opacity: showIdea || showStoryboardTest ? 0 : 1 }}
+          style={{ pointerEvents: showIdea || showStoryboardTest ? 'none' : 'auto' }}
         >
-          {!showIdea && !showRefinementPage && !showStoryboardTest && (
+          {!showIdea && !showStoryboardTest && (
             <>
               <StoryTree 
                 storyData={storyData} 
