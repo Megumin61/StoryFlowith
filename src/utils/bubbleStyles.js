@@ -67,6 +67,17 @@ export const BUBBLE_STYLES = {
       }
     },
 
+    // 紫色 - 角色相关
+    purple: {
+      backgroundColor: '#faf5ff',
+      color: '#7c3aed',
+      border: '1px solid #ddd6fe',
+      hover: {
+        backgroundColor: '#f3e8ff',
+        border: '1px solid #c4b5fd'
+      }
+    },
+
     // 默认灰色
     gray: {
       backgroundColor: '#f9fafb',
@@ -161,6 +172,11 @@ export const getTailwindClasses = (type, originalColor = null, variant = 'defaul
     indigo: {
       default: 'bg-indigo-50 text-indigo-700 border-indigo-200',
       hover: 'hover:bg-indigo-100 hover:border-indigo-300'
+    },
+
+    purple: {
+      default: 'bg-purple-50 text-purple-700 border-purple-200',
+      hover: 'hover:bg-purple-100 hover:border-purple-300'
     },
 
     gray: {

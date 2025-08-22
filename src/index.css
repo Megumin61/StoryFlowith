@@ -272,3 +272,110 @@ body {
 .hover\:scrollbar-thumb-gray-400:hover::-webkit-scrollbar-thumb {
     background: #9ca3af;
 }
+
+/* 自定义滑块样式 */
+.slider {
+    -webkit-appearance: none;
+    appearance: none;
+    outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #3B82F6;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+}
+
+.slider::-webkit-slider-thumb:hover {
+    background: #2563EB;
+    transform: scale(1.1);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #3B82F6;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+}
+
+.slider::-moz-range-thumb:hover {
+    background: #2563EB;
+    transform: scale(1.1);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.slider::-webkit-slider-track {
+    background: transparent;
+    border: none;
+}
+
+.slider::-moz-range-track {
+    background: transparent;
+    border: none;
+}
+
+/* 改进的细滑块样式 - 用于气泡权重 */
+.slider-thin {
+    -webkit-appearance: none;
+    appearance: none;
+    outline: none;
+}
+
+.slider-thin::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 2px solid #3b82f6;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    transition: all 0.2s ease;
+}
+
+.slider-thin::-webkit-slider-thumb:hover {
+    background: #f8fafc;
+    border-color: #2563eb;
+    transform: scale(1.1);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+}
+
+.slider-thin::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 2px solid #3b82f6;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    transition: all 0.2s ease;
+}
+
+.slider-thin::-moz-range-thumb:hover {
+    background: #f8fafc;
+    border-color: #2563eb;
+    transform: scale(1.1);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+}
+
+.slider-thin::-webkit-slider-track {
+    background: transparent;
+    border: none;
+}
+
+.slider-thin::-moz-range-track {
+    background: transparent;
+    border: none;
+}

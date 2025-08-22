@@ -117,11 +117,31 @@ const generateTextToImage = async (prompt) => {
     debugLog(`开始文生图调用, 提示词: ${prompt}, 开始时间: ${startTime.toLocaleTimeString()}`);
     console.log(`开始文生图调用, 提示词: ${prompt}, 开始时间: ${startTime.toLocaleTimeString()}`);
     
-    // 构建请求参数 - 完全按照文档示例
+    // 检查提示词是否为中文，如果是则翻译成英文
+    let englishPrompt = prompt;
+    if (/[\u4e00-\u9fa5]/.test(prompt)) {
+      try {
+        console.log('🔄 检测到中文提示词，开始翻译...');
+        const translation = await YoudaoTranslate.zhToEn(prompt);
+        englishPrompt = translation;
+        console.log('✅ 翻译完成:', englishPrompt);
+      } catch (translateError) {
+        console.warn('⚠️ 翻译失败，使用原始提示词:', translateError);
+        englishPrompt = prompt;
+      }
+    }
+    
+    // 添加指定的前缀
+    const finalPrompt = `Don't reference the characters in the image, only reference the style of the image, generate a single storyboard frame for me(Do not have an outer frame around the image): ${englishPrompt}`;
+    
+    console.log('🎯 最终英文提示词:', finalPrompt);
+    
+    // 构建请求参数 - 包含所有必需参数
     const input = {
-      prompt: prompt,
-      aspect_ratio: "16:9", // 添加宽高比参数，设置为16:9
-      sync_mode: true // 启用同步模式，直接返回结果
+      prompt: finalPrompt,
+      image_url: getStyleImageUrl('style1'), // 默认使用style1作为参考风格
+      aspect_ratio: "16:9",
+      sync_mode: true
     };
     
     // 打印请求参数
@@ -250,9 +270,28 @@ const generateImageToImage = async (prompt, imageUrl, modelType = 'generate') =>
     const originalImageUrl = finalImageUrl;
 
     
-    // 构建请求参数 - 保持API调用的简单性
+    // 检查提示词是否为中文，如果是则翻译成英文
+    let englishPrompt = prompt;
+    if (/[\u4e00-\u9fa5]/.test(prompt)) {
+      try {
+        console.log('🔄 [图生图] 检测到中文提示词，开始翻译...');
+        const translation = await YoudaoTranslate.zhToEn(prompt);
+        englishPrompt = translation;
+        console.log('✅ [图生图] 翻译完成:', englishPrompt);
+      } catch (translateError) {
+        console.warn('⚠️ [图生图] 翻译失败，使用原始提示词:', translateError);
+        englishPrompt = prompt;
+      }
+    }
+    
+    // 添加指定的前缀
+    const finalPrompt = `Don't reference the characters in the image, only reference the style of the image, generate a single storyboard frame for me(Do not have an outer frame around the image): ${englishPrompt}`;
+    
+    console.log('🎯 [图生图] 最终英文提示词:', finalPrompt);
+    
+    // 构建请求参数 - 包含所有必需参数
     const input = {
-      prompt: prompt,
+      prompt: finalPrompt,
       image_url: finalImageUrl,
       aspect_ratio: "16:9",
       sync_mode: true
@@ -366,10 +405,68 @@ const generateImageToImage = async (prompt, imageUrl, modelType = 'generate') =>
   }
 };
 
+/**
+ * 图像编辑函数
+ * 基于现有图像和编辑提示词生成新的图像
+ * @param {Object} params - 编辑参数
+ * @param {string} params.image_url - 原始图像URL
+ * @param {string} params.prompt - 编辑提示词
+ * @param {number} params.strength - 编辑强度 (0-1)
+ * @param {number} params.guidance_scale - 引导尺度
+ * @param {number} params.num_inference_steps - 推理步数
+ * @param {number} params.seed - 随机种子
+ * @returns {Promise<Object>} - 编辑后的图像结果
+ */
+const editImage = async (params) => {
+  try {
+    debugLog('开始图像编辑，参数:', params);
+    
+    // 验证必要参数
+    if (!params.image_url) {
+      throw new Error('缺少原始图像URL');
+    }
+    if (!params.prompt) {
+      throw new Error('缺少编辑提示词');
+    }
+    
+    // 构建请求参数，使用fal.ai的图像编辑模型
+    const requestParams = {
+      prompt: params.prompt,
+      image_url: params.image_url,
+      strength: params.strength || 0.7,
+      guidance_scale: params.guidance_scale || 7.5,
+      num_inference_steps: params.num_inference_steps || 30,
+      seed: params.seed || Math.floor(Math.random() * 1000000)
+    };
+    
+    debugLog('发送图像编辑请求，参数:', requestParams);
+    
+    // 调用fal.ai的图像编辑API
+    const result = await fal.subscribe("fal-ai/flux-pro/kontext/max", {
+      input: requestParams,
+      logs: falConfig.debug,
+      onQueueUpdate: (update) => {
+        if (update.status === "IN_PROGRESS" && falConfig.debug) {
+          update.logs?.map((log) => log.message).forEach(console.log);
+        }
+      },
+    });
+    
+    debugLog('图像编辑完成，结果:', result);
+    return result;
+    
+  } catch (error) {
+    debugLog(`图像编辑调用出错: ${error.message}`);
+    console.error('图像编辑调用出错:', error);
+    throw error;
+  }
+};
+
 // 导出API函数
 export default {
   generateTextToImage,
   generateImageToImage,
+  editImage,
   testOfficialExample,
   STYLE_URLS,
   TEST_IMAGE,

@@ -105,6 +105,10 @@ export const createNode = (type, data = {}) => {
     case NODE_TYPES.EXPLORATION:
       return {
         ...baseNode,
+        // 保留根级别的关键数据字段
+        userPersona: data.userPersona,
+        branchContext: data.branchContext,
+        currentFrameStory: data.currentFrameStory,
         explorationData: {
           isExplorationNode: true,
           keywords: data.keywords || [],

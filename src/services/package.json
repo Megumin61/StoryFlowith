@@ -1,0 +1,28 @@
+{
+  "name": "persona-generation-backend",
+  "version": "1.0.0",
+  "description": "用户画像生成后端服务",
+  "main": "cozeAPI.js",
+  "scripts": {
+    "start": "node cozeAPI.js",
+    "dev": "nodemon cozeAPI.js",
+    "install-deps": "npm install"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "persona",
+    "user-research",
+    "ai",
+    "coze"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+} 

@@ -5,6 +5,7 @@ import {
   MessageSquare, Sparkles, GitFork, Settings, User
 } from 'lucide-react';
 import { getBubbleStyle } from '../utils/bubbleStyles';
+import { generateSceneExploration } from '../services/sceneExplorationService';
 
 // 节点状态常量
 const NODE_STATES = {
@@ -33,11 +34,14 @@ const ExplorationNode = ({
 }) => {
   const [nodeState, setNodeState] = useState(data.state || NODE_STATES.EXPANDED);
   const [explorationText, setExplorationText] = useState(data.explorationText || '');
-  const [branchCount, setBranchCount] = useState(data.branchCount || 3);
+  const [branchCount, setBranchCount] = useState(3); // 固定为3个分镜节点
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedIdeas, setGeneratedIdeas] = useState(data.generatedIdeas || []);
   const [selectedIdeas, setSelectedIdeas] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
+  
+  // 新增：预测分镜数据状态
+  const [predictedFrames, setPredictedFrames] = useState(data.predictedFrames || []);
   
   // 新增：气泡拖拽区域状态
   const [bubbleDragArea, setBubbleDragArea] = useState({
@@ -56,6 +60,9 @@ const ExplorationNode = ({
   
   // 新增：是否显示思考气泡面板
   const [showBubblesPanel, setShowBubblesPanel] = useState(false);
+  
+  // 新增：已创建的分镜节点ID列表
+  const [createdFrameIds, setCreatedFrameIds] = useState(data.createdFrameIds || []);
   
   const nodeRef = useRef(null);
   
@@ -81,6 +88,34 @@ const ExplorationNode = ({
     }
   }, [data.state]); // 只依赖data.state，避免循环更新
 
+  // 新增：检查接收到的数据完整性
+  useEffect(() => {
+    console.log('🔍 ExplorationNode 数据接收检查:');
+    console.log('  - data.id:', data.id);
+    console.log('  - data.type:', data.type);
+    console.log('  - data.userPersona:', data.userPersona);
+    console.log('  - data.branchContext:', data.branchContext);
+    console.log('  - data.currentFrameStory:', data.currentFrameStory);
+    console.log('  - data.explorationText:', data.explorationText);
+    console.log('  - data.createdFrameIds:', data.createdFrameIds);
+    
+    // 检查关键数据是否存在
+    if (!data.userPersona) {
+      console.warn('⚠️ ExplorationNode: 缺少用户画像数据');
+    }
+    if (!data.branchContext) {
+      console.warn('⚠️ ExplorationNode: 缺少分支上下文数据');
+    }
+    if (!data.currentFrameStory) {
+      console.warn('⚠️ ExplorationNode: 缺少当前分镜故事数据');
+    }
+    
+    // 同步已创建的分镜节点ID
+    if (data.createdFrameIds && data.createdFrameIds.length > 0) {
+      setCreatedFrameIds(data.createdFrameIds);
+    }
+  }, [data.id, data.userPersona, data.branchContext, data.currentFrameStory, data.explorationText, data.createdFrameIds]);
+
   // 防抖的状态更新函数
   const debouncedUpdate = useCallback((updates) => {
     if (updateTimeoutRef.current) {
@@ -100,11 +135,12 @@ const ExplorationNode = ({
           selectedIdeas,
           bubbleDragArea,
           explorationBubbles,
-          showBubblesPanel
+          showBubblesPanel,
+          createdFrameIds
         });
       }
     }, 100); // 100ms防抖延迟
-  }, [data, nodeState, explorationText, branchCount, generatedIdeas, selectedIdeas, bubbleDragArea, explorationBubbles, showBubblesPanel]);
+  }, [data, nodeState, explorationText, branchCount, generatedIdeas, selectedIdeas, bubbleDragArea, explorationBubbles, showBubblesPanel, createdFrameIds]);
 
   // 同步本地状态到data - 使用防抖机制
   useEffect(() => {
@@ -112,20 +148,22 @@ const ExplorationNode = ({
     const hasChanged = 
       lastUpdateRef.current.nodeState !== nodeState ||
       lastUpdateRef.current.showBubblesPanel !== showBubblesPanel ||
-      JSON.stringify(lastUpdateRef.current.bubbleDragArea) !== JSON.stringify(bubbleDragArea);
+      JSON.stringify(lastUpdateRef.current.bubbleDragArea) !== JSON.stringify(bubbleDragArea) ||
+      JSON.stringify(lastUpdateRef.current.createdFrameIds) !== JSON.stringify(createdFrameIds);
     
     if (hasChanged) {
-      console.log('ExplorationNode syncing local state to data:', { nodeState, showBubblesPanel });
-      lastUpdateRef.current = { nodeState, showBubblesPanel, bubbleDragArea };
+      console.log('ExplorationNode syncing local state to data:', { nodeState, showBubblesPanel, createdFrameIds });
+      lastUpdateRef.current = { nodeState, showBubblesPanel, bubbleDragArea, createdFrameIds };
       debouncedUpdate();
     }
-  }, [nodeState, showBubblesPanel, bubbleDragArea, debouncedUpdate]);
+  }, [nodeState, showBubblesPanel, bubbleDragArea, createdFrameIds, debouncedUpdate]);
 
   // 同步showBubblesPanel状态到节点数据，确保布局算法能正确计算宽度
   useEffect(() => {
     if (data.onUpdateNode) {
       data.onUpdateNode(data.id, {
-        showBubblesPanel: showBubblesPanel
+        showBubblesPanel: showBubblesPanel,
+        createdFrameIds: createdFrameIds
       });
       
       // 触发重新布局，因为宽度发生了变化 - 添加防抖
@@ -139,7 +177,7 @@ const ExplorationNode = ({
         }, 150); // 150ms防抖延迟，避免频繁触发布局
       }
     }
-  }, [showBubblesPanel, data]);
+  }, [showBubblesPanel, createdFrameIds, data]);
 
   // 新增：气泡拖拽区域处理函数 - 添加防抖和错误处理
   const handleBubbleDragAreaDrop = useCallback((e) => {
@@ -248,38 +286,138 @@ const ExplorationNode = ({
   }, []);
 
   // 新增：生成探索气泡函数
-  const generateExplorationBubbles = () => {
-    console.log('ExplorationNode generateExplorationBubbles called');
-    console.log('ExplorationNode current explorationText:', explorationText);
-    console.log('ExplorationNode current nodeState:', nodeState);
+  const generateExplorationBubbles = async () => {
+    console.log('🔍 ExplorationNode generateExplorationBubbles called');
+    console.log('🔍 ExplorationNode current explorationText:', explorationText);
+    console.log('🔍 ExplorationNode current nodeState:', nodeState);
+    console.log('🔍 ExplorationNode 接收到的完整data:', data);
+    console.log('🔍 ExplorationNode data.userPersona:', data.userPersona);
+    console.log('🔍 ExplorationNode data.branchContext:', data.branchContext);
+    console.log('🔍 ExplorationNode data.currentFrameStory:', data.currentFrameStory);
     
-    const baseText = explorationText || '情景探索';
-    console.log('ExplorationNode baseText:', baseText);
+          if (!explorationText.trim()) {
+        console.log('ExplorationNode: 没有探索内容，无法生成气泡');
+        return;
+      }
+      
+      // 验证关键数据是否存在
+      if (!data.userPersona || Object.keys(data.userPersona).length === 0) {
+        console.warn('⚠️ ExplorationNode: 缺少用户画像数据，使用默认数据');
+      }
+      if (!data.branchContext || data.branchContext.trim() === '') {
+        console.warn('⚠️ ExplorationNode: 缺少分支上下文数据');
+      }
+      if (!data.currentFrameStory || data.currentFrameStory.trim() === '') {
+        console.warn('⚠️ ExplorationNode: 缺少当前分镜故事数据');
+      }
     
-    // 生成三个维度的思考气泡，添加颜色信息
-    const newExplorationBubbles = {
-      immediateFeelings: [
-        { id: 'feeling-1', text: `${baseText}让我感到兴奋`, originalColor: 'red' },
-        { id: 'feeling-2', text: `${baseText}带来一些担忧`, originalColor: 'red' },
-        { id: 'feeling-3', text: `${baseText}让我充满期待`, originalColor: 'red' }
-      ],
-      actionTendencies: [
-        { id: 'action-1', text: `想要深入探索${baseText}`, originalColor: 'blue' },
-        { id: 'action-2', text: `需要更多信息来理解${baseText}`, originalColor: 'blue' },
-        { id: 'action-3', text: `准备制定${baseText}的计划`, originalColor: 'blue' }
-      ],
-      goalAdjustments: [
-        { id: 'goal-1', text: `调整目标以适应${baseText}`, originalColor: 'green' },
-        { id: 'goal-2', text: `重新评估${baseText}的优先级`, originalColor: 'green' },
-        { id: 'goal-3', text: `为${baseText}设定新的里程碑`, originalColor: 'green' }
-      ]
-    };
+    setIsGenerating(true);
+    console.log('ExplorationNode: 开始生成探索气泡...');
     
-    console.log('ExplorationNode setting exploration bubbles:', newExplorationBubbles);
-    setExplorationBubbles(newExplorationBubbles);
-    console.log('ExplorationNode showing bubbles panel instead of changing state');
-    setShowBubblesPanel(true); // 显示右侧气泡面板，而不是切换状态
-    console.log('ExplorationNode bubbles panel should now be visible');
+    try {
+      // 准备探索数据 - 包含完整的故事上下文和用户画像
+      const explorationData = {
+        explorationText: explorationText,
+        userPersona: data.userPersona || {}, // 完整用户画像数据
+        branchContext: data.branchContext || '', // 分支上下文（该分支之前所有分镜连起来的故事脚本）
+        currentFrameStory: data.currentFrameStory || '' // 当前分镜故事脚本
+      };
+      
+      console.log('🔍 ExplorationNode: 准备调用情景探索API');
+      console.log('🔍 ExplorationNode: 探索文本:', explorationText);
+      console.log('🔍 ExplorationNode: 用户画像:', data.userPersona);
+      console.log('🔍 ExplorationNode: 分支上下文:', data.branchContext);
+      console.log('🔍 ExplorationNode: 当前分镜故事:', data.currentFrameStory);
+      console.log('🔍 ExplorationNode: 完整探索数据:', explorationData);
+      
+      // 调用情景探索API
+      const result = await generateSceneExploration(explorationData);
+      
+      console.log('ExplorationNode: 情景探索API返回结果:', result);
+      
+      if (result.reflection_bubbles && result.next_story_options) {
+        // 转换API返回的数据格式
+        const newExplorationBubbles = {
+          immediateFeelings: result.reflection_bubbles.immediate_feelings.map((text, index) => ({
+            id: `feeling-${index + 1}`,
+            text: text,
+            originalColor: 'red'
+          })),
+          actionTendencies: result.reflection_bubbles.action_tendencies.map((text, index) => ({
+            id: `action-${index + 1}`,
+            text: text,
+            originalColor: 'blue'
+          })),
+          goalAdjustments: result.reflection_bubbles.goal_adjustments.map((text, index) => ({
+            id: `goal-${index + 1}`,
+            text: text,
+            originalColor: 'green'
+          }))
+        };
+        
+        // 保存故事选项数据，供后续生成分支使用
+        setPredictedFrames(result.next_story_options);
+        
+        console.log('ExplorationNode: 设置探索气泡:', newExplorationBubbles);
+        setExplorationBubbles(newExplorationBubbles);
+        
+        console.log('ExplorationNode: 显示气泡面板');
+        setShowBubblesPanel(true);
+        
+      } else {
+        console.error('ExplorationNode: API返回数据格式不正确:', result);
+        // 如果API失败，使用默认气泡
+        const baseText = explorationText || '情景探索';
+        const fallbackBubbles = {
+          immediateFeelings: [
+            { id: 'feeling-1', text: `${baseText}让我感到兴奋`, originalColor: 'red' },
+            { id: 'feeling-2', text: `${baseText}带来一些担忧`, originalColor: 'red' },
+            { id: 'feeling-3', text: `${baseText}让我充满期待`, originalColor: 'red' }
+          ],
+          actionTendencies: [
+            { id: 'action-1', text: `想要深入探索${baseText}`, originalColor: 'blue' },
+            { id: 'action-2', text: `需要更多信息来理解${baseText}`, originalColor: 'blue' },
+            { id: 'action-3', text: `准备制定${baseText}的计划`, originalColor: 'blue' }
+          ],
+          goalAdjustments: [
+            { id: 'goal-1', text: `调整目标以适应${baseText}`, originalColor: 'green' },
+            { id: 'goal-2', text: `重新评估${baseText}的优先级`, originalColor: 'green' },
+            { id: 'goal-3', text: `为${baseText}设定新的里程碑`, originalColor: 'green' }
+          ]
+        };
+        
+        setExplorationBubbles(fallbackBubbles);
+        setShowBubblesPanel(true);
+      }
+      
+    } catch (error) {
+      console.error('ExplorationNode: 情景探索API调用失败:', error);
+      
+      // 如果API失败，使用默认气泡
+      const baseText = explorationText || '情景探索';
+      const fallbackBubbles = {
+        immediateFeelings: [
+          { id: 'feeling-1', text: `${baseText}让我感到兴奋`, originalColor: 'red' },
+          { id: 'feeling-2', text: `${baseText}带来一些担忧`, originalColor: 'red' },
+          { id: 'feeling-3', text: `${baseText}让我充满期待`, originalColor: 'red' }
+        ],
+        actionTendencies: [
+          { id: 'action-1', text: `想要深入探索${baseText}`, originalColor: 'blue' },
+          { id: 'action-2', text: `需要更多信息来理解${baseText}`, originalColor: 'blue' },
+          { id: 'action-3', text: `准备制定${baseText}的计划`, originalColor: 'blue' }
+        ],
+        goalAdjustments: [
+          { id: 'goal-1', text: `调整目标以适应${baseText}`, originalColor: 'green' },
+          { id: 'goal-2', text: `重新评估${baseText}的优先级`, originalColor: 'green' },
+          { id: 'goal-3', text: `为${baseText}设定新的里程碑`, originalColor: 'green' }
+        ]
+      };
+      
+      setExplorationBubbles(fallbackBubbles);
+      setShowBubblesPanel(true);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   // 新增：生成情景分支函数
@@ -291,9 +429,16 @@ const ExplorationNode = ({
     console.log('ExplorationNode: handleGenerateBranches 被调用');
     console.log('ExplorationNode: explorationText:', explorationText);
     console.log('ExplorationNode: bubbleDragArea.bubbles:', bubbleDragArea.bubbles);
+    console.log('ExplorationNode: predictedFrames:', predictedFrames);
+    console.log('ExplorationNode: createdFrameIds:', createdFrameIds);
     
     if (!explorationText.trim() && bubbleDragArea.bubbles.length === 0) {
       console.log('ExplorationNode: 没有探索内容，无法生成分支');
+      return;
+    }
+    
+    if (predictedFrames.length === 0) {
+      console.log('ExplorationNode: 没有预测分镜数据，无法生成分支');
       return;
     }
     
@@ -301,40 +446,71 @@ const ExplorationNode = ({
     console.log('ExplorationNode: 开始生成情景分支');
     
     try {
-      // 模拟生成分支的API调用
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // 检查是否已经有创建的分镜节点
+      if (createdFrameIds.length > 0) {
+        console.log('ExplorationNode: 检测到已存在的分镜节点，将直接修改故事脚本');
+        
+        // 直接修改现有分镜节点的故事脚本
+        const updateData = {
+          explorationText,
+          bubbleData: bubbleDragArea.bubbles,
+          predictedFrames: predictedFrames.slice(0, 3), // 只取前3个
+          lastUpdated: Date.now()
+        };
+        
+        // 调用父组件的回调函数，传递更新数据而不是新建节点
+        if (onGenerateBranches) {
+          console.log('ExplorationNode: 调用父组件的 onGenerateBranches 更新现有节点');
+          onGenerateBranches({
+            type: 'update_existing',
+            explorationNodeId: data.id,
+            updateData,
+            existingFrameIds: createdFrameIds
+          });
+        }
+        
+        return;
+      }
       
-      // 生成分支数据 - 每个分支都是一个完整的分镜节点
-      const branches = Array.from({ length: branchCount }, (_, i) => ({
-        id: `branch-${Date.now()}-${i}`,
-        text: generateBranchTitle(i + 1),
-        prompt: generateBranchPrompt(i + 1),
-        imagePrompt: generateImagePrompt(i + 1),
+      // 如果没有已存在的分镜节点，则创建新的分镜节点
+      console.log('ExplorationNode: 创建新的分镜节点');
+      
+      // 固定生成3个分镜节点
+      const branches = predictedFrames.slice(0, 3).map((storyOption, index) => ({
+        id: `branch-${Date.now()}-${index}`,
+        text: `分镜 ${index + 1}`,
+        prompt: storyOption || '',
+        imagePrompt: '',
         image: null,
         state: 'collapsed',
         pos: { x: 0, y: 0 }, // 位置将由父组件计算
         connections: [],
-        nodeIndex: data.nodeIndex + 1 + i, // 在探索节点后
+        nodeIndex: data.nodeIndex + 1 + index, // 在探索节点后
         // 分支相关的元数据 - 使用新的分支管理逻辑
         branchData: {
-          branchId: `branch_${data.id}_${i}_${Date.now()}`, // 唯一的分支ID
+          branchId: `branch_${data.id}_${index}_${Date.now()}`, // 唯一的分支ID
           parentNodeId: data.id,
           explorationText: explorationText,
           bubbleData: bubbleDragArea.bubbles,
-          branchIndex: i,
+          branchIndex: index,
           generationParams: {
             explorationText,
-            bubbleData: bubbleDragArea.bubbles
+            bubbleData: bubbleDragArea.bubbles,
+            predictedFrame: storyOption
           }
         }
       }));
       
-      console.log('ExplorationNode: 生成的分支数据:', branches);
+      console.log('ExplorationNode: 生成的新分支数据:', branches);
       
       // 调用父组件的回调函数
       if (onGenerateBranches) {
-        console.log('ExplorationNode: 调用父组件的 onGenerateBranches');
-        onGenerateBranches(branches);
+        console.log('ExplorationNode: 调用父组件的 onGenerateBranches 创建新节点');
+        onGenerateBranches({
+          type: 'create_new',
+          branches,
+          explorationNodeId: data.id
+        });
       } else {
         console.error('ExplorationNode: onGenerateBranches 回调函数未定义');
       }
@@ -495,12 +671,27 @@ const ExplorationNode = ({
               <MessageSquare size={16} className="text-gray-500" />
               <span className="text-sm font-medium text-gray-700">情景探索</span>
             </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); handleToggleState(e); }}
-              className="p-1 hover:bg-gray-100 rounded"
-            >
-              <ChevronDown size={16} className="text-gray-500" />
-            </button>
+            <div className="flex items-center gap-2">
+              {/* 删除按钮 */}
+              <button
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  if (onNodeDelete) {
+                    onNodeDelete(data.id);
+                  }
+                }}
+                className="p-1 hover:bg-red-100 rounded text-red-500 hover:text-red-600 transition-colors"
+                title="删除节点"
+              >
+                <X size={16} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleToggleState(e); }}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <ChevronDown size={16} className="text-gray-500" />
+              </button>
+            </div>
           </div>
           
           <div className="text-xs text-gray-500 line-clamp-2">
@@ -672,6 +863,19 @@ const ExplorationNode = ({
             <span className="text-base font-medium text-gray-800">✍️情景探索输入</span>
           </div>
           <div className="flex items-center gap-2">
+            {/* 删除按钮 */}
+            <button
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                if (onNodeDelete) {
+                  onNodeDelete(data.id);
+                }
+              }}
+              className="p-1 hover:bg-red-100 rounded text-red-500 hover:text-red-600 transition-colors"
+              title="删除节点"
+            >
+              <X size={16} />
+            </button>
             <button
               onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }}
               className={`p-1 rounded transition-colors ${
@@ -689,7 +893,7 @@ const ExplorationNode = ({
           </div>
         </div>
 
-        {/* 设置面板 */}
+        {/* 设置面板 - 显示固定分支数量信息 */}
         <AnimatePresence>
           {showSettings && (
             <motion.div
@@ -701,22 +905,13 @@ const ExplorationNode = ({
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">分支数量:</span>
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setBranchCount(Math.max(1, branchCount - 1))}
-                    className="w-6 h-6 rounded border border-gray-300 flex items-center justify-center hover:bg-gray-100"
-                  >
-                    -
-                  </button>
                   <span className="text-sm font-medium text-gray-700 w-8 text-center">
-                    {branchCount}
+                    {branchCount} (固定)
                   </span>
-                  <button
-                    onClick={() => setBranchCount(Math.min(8, branchCount + 1))}
-                    className="w-6 h-6 rounded border border-gray-300 flex items-center justify-center hover:bg-gray-100"
-                  >
-                    +
-                  </button>
                 </div>
+              </div>
+              <div className="text-xs text-gray-500 mt-2">
+                情景探索节点固定生成3个分镜分支
               </div>
             </motion.div>
           )}
@@ -992,6 +1187,18 @@ const ExplorationNode = ({
 
             {/* 生成情景分支按钮 */}
             <div className="mt-6 pt-4 border-t border-gray-100 relative z-20">
+              {/* 显示已创建的分镜节点信息 */}
+              {createdFrameIds.length > 0 && (
+                <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="text-xs text-blue-700">
+                    已创建 {createdFrameIds.length} 个分镜节点
+                  </div>
+                  <div className="text-xs text-blue-600 mt-1">
+                    重新生成将直接修改现有节点的故事脚本
+                  </div>
+                </div>
+              )}
+              
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1014,7 +1221,7 @@ const ExplorationNode = ({
                 ) : (
                   <>
                     <GitFork size={16} />
-                    生成情景分支 ({branchCount}个)
+                    {createdFrameIds.length > 0 ? '重新生成分镜内容' : '生成情景分支 (3个)'}
                   </>
                 )}
               </button>

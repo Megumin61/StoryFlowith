@@ -24,6 +24,7 @@
     "node-fetch": "^3.3.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-router-dom": "^6.20.1",
     "react-scripts": "5.0.1",
     "reactflow": "^11.11.4",
     "uuid": "^11.1.0",

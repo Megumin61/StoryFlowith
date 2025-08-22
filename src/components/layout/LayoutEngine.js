@@ -58,14 +58,7 @@ export const getNodeDisplayWidth = (node) => {
   const showPanel = node.showFloatingPanel;
   const totalWidth = baseWidth + (showPanel ? DYNAMIC_LAYOUT_CONFIG.PANEL_WIDTH : 0);
   
-  console.log('🔧 节点宽度计算:', {
-    nodeId: node.id,
-    nodeState: node.state,
-    baseWidth,
-    showPanel,
-    panelWidth: showPanel ? DYNAMIC_LAYOUT_CONFIG.PANEL_WIDTH : 0,
-    totalWidth
-  });
+
   
   return totalWidth;
 };
@@ -114,14 +107,7 @@ export const calculateDynamicGap = (currentNode, currentIndex, allNodes) => {
     gap = 60;
   }
   
-  // 添加调试日志
-  console.log('🔧 动态间距计算:', {
-    currentNodeId: currentNode.id,
-    currentIndex,
-    isCurrentExploration,
-    isNextExploration,
-    calculatedGap: gap
-  });
+
   
   return gap;
 };
@@ -149,7 +135,7 @@ export const layoutTree = (storyModel, selectedFrameId, getNodeById, getBranchBy
         return aIndex - bIndex;
       });
 
-    console.log('🔧 分支节点排序结果:', branchNodes.map(n => ({ id: n.id, nodeIndex: n.nodeIndex, label: n.label })));
+
 
     if (branchNodes.length === 0) return { width: 0, height: 0 };
 
@@ -276,7 +262,7 @@ export const updateNodeState = (nodeId, state, isExpanded) => {
     lastUpdated: Date.now()
   };
   
-  console.log('🔧 updateNodeState 被调用:', { nodeId, state, isExpanded });
+
   
   // 立即触发动态重新布局，确保节点间距保持动态不变
   requestAnimationFrame(() => {
@@ -287,21 +273,17 @@ export const updateNodeState = (nodeId, state, isExpanded) => {
 
     if (isExplorationNode) {
       // 情景探索节点尺寸变化会影响子分支起点，必须做全局递归布局
-      console.log('🔧 探索节点状态变化，执行全局布局');
       globalLayoutTree();
     } else if (currentNode.branchId) {
       // 分镜节点状态变化，使用智能重新布局保持后续节点间距
       const branch = globalGetBranchById ? globalGetBranchById(currentNode.branchId) : null;
       if (branch) {
-        console.log('🔧 分镜节点状态变化，执行智能重新布局');
         smartRelayout(branch, nodeId);
       } else {
-        console.log('🔧 无法找到分支，执行全局布局');
         globalLayoutTree();
       }
     } else {
       // 兜底：无法定位分支时执行全局布局
-      console.log('🔧 兜底：执行全局布局');
       globalLayoutTree();
     }
   });
@@ -320,12 +302,8 @@ export const smartRelayout = (branch, changedNodeId) => {
   const changedNodeIndex = branchNodes.findIndex(node => node.id === changedNodeId);
   if (changedNodeIndex === -1) return;
   
-  console.log('🔧 开始智能重新布局，变更节点索引:', changedNodeIndex, '分支节点数量:', branchNodes.length);
-  console.log('🔧 变更节点信息:', {
-    id: changedNodeId,
-    state: branchNodes[changedNodeIndex]?.state,
-    width: getNodeDisplayWidth(branchNodes[changedNodeIndex])
-  });
+
+
   
   // 从变更节点开始，重新计算所有后续节点的位置
   for (let i = changedNodeIndex; i < branchNodes.length; i++) {
@@ -339,7 +317,7 @@ export const smartRelayout = (branch, changedNodeId) => {
           globalUpdateNode(node.id, {
             pos: { x: newX, y: node.pos.y }
           });
-          console.log('🔧 更新第一个节点位置:', node.id, '->', newX);
+
         }
       }
     } else {
@@ -356,13 +334,13 @@ export const smartRelayout = (branch, changedNodeId) => {
           globalUpdateNode(node.id, {
             pos: { x: newX, y: node.pos.y }
           });
-          console.log('🔧 更新节点位置:', node.id, '->', newX, '前一个节点宽度:', prevNodeWidth, '间距:', dynamicGap);
+
         }
       }
     }
   }
   
-  console.log('🔧 智能重新布局完成');
+
 };
 
 // 初始化节点状态函数
