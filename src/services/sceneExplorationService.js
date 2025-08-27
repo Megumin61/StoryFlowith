@@ -9,12 +9,7 @@ const COZE_API_BASE = process.env.REACT_APP_COZE_API_BASE || 'http://localhost:3
  * @param {string} explorationData.branchContext - 分支上下文（该分支之前所有分镜连起来的故事脚本）
  * @param {string} explorationData.currentFrameStory - 当前分镜故事脚本
  * @param {Object} explorationData.userPersona - 完整的用户画像信息
- * @param {Object} explorationData.keywordBubbles - 用户拖入的关键词气泡，按维度分类
- * @param {Array} explorationData.keywordBubbles.persona - 人设相关关键词
- * @param {Array} explorationData.keywordBubbles.context - 情境相关关键词
- * @param {Array} explorationData.keywordBubbles.goal - 目标相关关键词
- * @param {Array} explorationData.keywordBubbles.pain - 痛点相关关键词
- * @param {Array} explorationData.keywordBubbles.emotion - 情感相关关键词
+ * @param {Array} explorationData.keywordBubbles - 用户拖入的关键词气泡数组
  * @returns {Promise<Object>} 返回反思气泡和故事选项数据
  */
 export const generateSceneExploration = async (explorationData) => {
@@ -33,13 +28,7 @@ export const generateSceneExploration = async (explorationData) => {
       branch_context: explorationData.branchContext || '', // 分支上下文
       current_frame_story: explorationData.currentFrameStory || '', // 当前分镜故事
       user_persona: explorationData.userPersona || {}, // 完整用户画像
-      keyword_bubbles: explorationData.keywordBubbles || { // 关键词气泡，按维度分类
-        persona: [],
-        context: [],
-        goal: [],
-        pain: [],
-        emotion: []
-      }
+      keyword_bubbles: explorationData.keywordBubbles || [] // 关键词气泡数组
     };
     
     const requestData = {
@@ -59,12 +48,7 @@ export const generateSceneExploration = async (explorationData) => {
     console.log('  - branch_context:', structuredData.branch_context);
     console.log('  - current_frame_story:', structuredData.current_frame_story);
     console.log('  - user_persona:', structuredData.user_persona);
-    console.log('  - keyword_bubbles:');
-    console.log('    - persona:', structuredData.keyword_bubbles.persona);
-    console.log('    - context:', structuredData.keyword_bubbles.context);
-    console.log('    - goal:', structuredData.keyword_bubbles.goal);
-    console.log('    - pain:', structuredData.keyword_bubbles.pain);
-    console.log('    - emotion:', structuredData.keyword_bubbles.emotion);
+    console.log('  - keyword_bubbles:', structuredData.keyword_bubbles);
     
     // 调用情景探索bot
     const response = await axios.post(`${COZE_API_BASE}/api/coze/chat`, requestData);

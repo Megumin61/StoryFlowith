@@ -165,7 +165,7 @@ const StoryNode = ({ data, selected }) => {
     visualElements: {
       bubbles: [],
       composition: 'medium',
-      style: 'sketch'
+      style: 'style1' // 修复：将默认风格改为style1，与视觉参考选项保持一致
     },
     prompt: data.imagePrompt || ''
   });
@@ -210,12 +210,28 @@ const StoryNode = ({ data, selected }) => {
     };
   }, [nodeState]);
 
+  // 添加一个ref来跟踪是否正在输入
+  const isTypingRef = useRef(false);
+  const lastExternalTextRef = useRef(data.text || '');
+  const isTypingPromptRef = useRef(false);
+  const lastExternalPromptRef = useRef(data.imagePrompt || '');
+
   // 初始化控件和数据
   useEffect(() => {
     console.log('🔧 StoryNode init useEffect triggered:', { nodeId: data.id, hasImage: !!data.image, currentState: nodeState });
     controls.start({ opacity: 1, scale: 1 });
-    setNodeText(data.text || '');
-    setVisualPrompt(data.imagePrompt || '');
+    
+    // 只有在不是用户正在输入，且外部文本确实发生变化时才更新nodeText
+    if (!isTypingRef.current && data.text !== lastExternalTextRef.current) {
+      setNodeText(data.text || '');
+      lastExternalTextRef.current = data.text || '';
+    }
+    
+    // 只有在不是用户正在输入提示词，且外部提示词确实发生变化时才更新visualPrompt
+    if (!isTypingPromptRef.current && data.imagePrompt !== lastExternalPromptRef.current) {
+      setVisualPrompt(data.imagePrompt || '');
+      lastExternalPromptRef.current = data.imagePrompt || '';
+    }
     
     // 同步展开态数据中的提示词
     setExpandedData(prev => ({
@@ -257,7 +273,35 @@ const StoryNode = ({ data, selected }) => {
       console.log('📝 设置为普通折叠状态');
       setNodeState(NODE_STATES.COLLAPSED);
     }
-  }, [data.id, data.image, data.text, data.imagePrompt, data.dialogs, data.imageHistory]);
+  }, [data.id, data.image, data.imagePrompt, data.dialogs, data.imageHistory]);
+
+  // 单独处理外部文本更新，避免在用户输入时重置
+  useEffect(() => {
+    if (!isTypingRef.current && data.text !== lastExternalTextRef.current) {
+      setNodeText(data.text || '');
+      lastExternalTextRef.current = data.text || '';
+    }
+  }, [data.text]);
+
+  // 单独处理外部提示词更新，避免在用户输入时重置
+  useEffect(() => {
+    if (!isTypingPromptRef.current && data.imagePrompt !== lastExternalPromptRef.current) {
+      setVisualPrompt(data.imagePrompt || '');
+      lastExternalPromptRef.current = data.imagePrompt || '';
+    }
+  }, [data.imagePrompt]);
+
+  // 组件卸载时清理timeout
+  useEffect(() => {
+    return () => {
+      if (handleTextChange.timeout) {
+        clearTimeout(handleTextChange.timeout);
+      }
+      if (handlePromptChange.timeout) {
+        clearTimeout(handlePromptChange.timeout);
+      }
+    };
+  }, []);
 
   // 控制小面板显示：选中节点显示
   useEffect(() => {
@@ -414,6 +458,9 @@ const StoryNode = ({ data, selected }) => {
   // 文本变化处理函数
   const handleTextChange = (e) => {
     const newText = e.target.value;
+    
+    // 标记正在输入
+    isTypingRef.current = true;
     setNodeText(newText);
 
     if (handleTextChange.timeout) {
@@ -424,11 +471,20 @@ const StoryNode = ({ data, selected }) => {
       if (data.onUpdateNode) {
         data.onUpdateNode(data.id, { text: newText });
       }
-    }, 50);
+      // 不在这里重置标志，而是在onBlur时重置
+    }, 500); // 增加到500ms，减少频繁更新
+  };
+
+  // 文本输入框失去焦点时重置输入标志
+  const handleTextBlur = () => {
+    isTypingRef.current = false;
   };
 
   const handlePromptChange = (e) => {
     const newPrompt = e.target.value;
+    
+    // 标记正在输入提示词
+    isTypingPromptRef.current = true;
     
     // 只更新本地状态，不立即同步到父组件，避免输入中断
     setVisualPrompt(newPrompt);
@@ -449,6 +505,9 @@ const StoryNode = ({ data, selected }) => {
       if (data.onUpdateNode) {
         data.onUpdateNode(data.id, { imagePrompt: newPrompt });
       }
+      
+      // 更新外部提示词引用
+      lastExternalPromptRef.current = newPrompt;
     }, 2000); // 增加到2秒，给用户更充足的输入时间
   };
 
@@ -628,6 +687,7 @@ const StoryNode = ({ data, selected }) => {
 
   // 风格变化处理
   const handleStyleChange = (style) => {
+    console.log('🎨 用户选择风格:', style);
     setExpandedData(prev => ({
       ...prev,
       visualElements: {
@@ -635,6 +695,7 @@ const StoryNode = ({ data, selected }) => {
         style
       }
     }));
+    console.log('✅ 风格已更新为:', style);
   };
 
 
@@ -937,13 +998,29 @@ const StoryNode = ({ data, selected }) => {
       
       console.log('📝 使用的视觉提示词:', visualPrompt);
       
-      // 调用FalAI服务生成图像
-      const result = await FalAI.generateTextToImage(visualPrompt);
+      // 获取用户选择的风格
+      const selectedStyle = expandedData.visualElements.style || 'style1';
+      console.log('🎨 使用选择的风格:', selectedStyle);
+      
+      // 获取风格图像URL
+      const styleImageUrl = FalAI.STYLE_URLS[selectedStyle];
+      console.log('🖼️ 风格参考图URL:', styleImageUrl);
+      
+      // 调用FalAI服务生成图像，使用图生图模式以支持风格参考
+      const result = await FalAI.generateImageToImage(visualPrompt, styleImageUrl);
       
       console.log('✅ 图像生成成功:', result);
+      console.log('🔍 检查返回结果结构:', {
+        hasResult: !!result,
+        hasData: !!(result && result.data),
+        hasImages: !!(result && result.data && result.data.images),
+        imagesLength: result?.data?.images?.length || 0,
+        firstImage: result?.data?.images?.[0]
+      });
       
       if (result && result.data && result.data.images && result.data.images.length > 0) {
-        const generatedImageUrl = result.data.images[0];
+        const generatedImageUrl = result.data.images[0].url || result.data.images[0];
+        console.log('🖼️ 提取的图像URL:', generatedImageUrl);
         
         // 创建新的图像记录
         const newImageRecord = {
@@ -961,19 +1038,26 @@ const StoryNode = ({ data, selected }) => {
         
         // 更新节点数据，保存生成的图像和历史记录
         if (data.onUpdateNode) {
+          console.log('📝 更新节点数据:', {
+            nodeId: data.id,
+            imageUrl: generatedImageUrl,
+            historyLength: updatedHistory.length
+          });
           data.onUpdateNode(data.id, { 
             image: generatedImageUrl,
             imageHistory: updatedHistory
           });
         }
         
-        // 更新本地状态 - 生成成功后保持在展开状态，显示生成的图像
-        setNodeState(NODE_STATES.EXPANDED);
+        // 更新本地状态 - 生成成功后切换到显示图像的状态
+        console.log('🔄 更新节点状态为:', NODE_STATES.COLLAPSED_WITH_IMAGE);
+        setNodeState(NODE_STATES.COLLAPSED_WITH_IMAGE);
         setIsGenerating(false);
         
         // 确保父组件知道节点状态变化
         if (data.onStateChange) {
-          data.onStateChange(data.id, NODE_STATES.EXPANDED, true);
+          console.log('📞 通知父组件状态变化:', NODE_STATES.COLLAPSED_WITH_IMAGE);
+          data.onStateChange(data.id, NODE_STATES.COLLAPSED_WITH_IMAGE, false);
         }
         
         console.log('🖼️ 图像已保存到节点:', generatedImageUrl);
@@ -1214,6 +1298,8 @@ const StoryNode = ({ data, selected }) => {
         }`}
         style={{ height: 'auto' }}
         onChange={selected ? handleTextChange : undefined}
+        onFocus={selected ? () => { isTypingRef.current = true; } : undefined}
+        onBlur={selected ? handleTextBlur : undefined}
       />
       <div className="flex justify-center mt-2">
         <div className="w-1 h-1 bg-gray-300 rounded-full"></div>
@@ -1262,6 +1348,11 @@ const StoryNode = ({ data, selected }) => {
                 src={data.image}
                 alt="生成的图像"
                 className="w-full h-full object-cover rounded-lg shadow-sm border border-gray-200"
+                onLoad={() => console.log('🖼️ 图像加载成功:', data.image)}
+                onError={(e) => {
+                  console.error('❌ 图像加载失败:', data.image, e);
+                  e.target.style.display = 'none';
+                }}
               />
 
               {/* 对话框按钮 - 仅在展开状态下显示，折叠状态下隐藏 */}
@@ -1319,6 +1410,8 @@ const StoryNode = ({ data, selected }) => {
           }`}
           style={{ height: 'auto', minHeight: '40px' }}
           onChange={selected ? handleTextChange : undefined}
+          onFocus={selected ? () => { isTypingRef.current = true; } : undefined}
+          onBlur={selected ? handleTextBlur : undefined}
         />
       </div>
       
@@ -1943,7 +2036,14 @@ const StoryNode = ({ data, selected }) => {
             <textarea
               data-no-drag
               value={visualPrompt}
-              onChange={(e) => setVisualPrompt(e.target.value)}
+              onChange={handlePromptChange}
+              onFocus={() => {
+                isTypingPromptRef.current = true;
+              }}
+              onBlur={() => {
+                isTypingPromptRef.current = false;
+                lastExternalPromptRef.current = visualPrompt;
+              }}
               placeholder="描述您想要的画面效果、构图、风格等..."
               className="w-full p-3 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent custom-scrollbar"
               rows={4}
@@ -2300,10 +2400,10 @@ const StoryNode = ({ data, selected }) => {
             </h5>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { id: 'style1', image: 'https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style1.png' },
-                { id: 'style2', image: 'https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style2.png' },
-                { id: 'style3', image: 'https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style3.png' },
-                { id: 'style4', image: 'https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style4.png' }
+                { id: 'style1', image: FalAI.STYLE_URLS.style1 },
+                { id: 'style2', image: FalAI.STYLE_URLS.style2 },
+                { id: 'style3', image: FalAI.STYLE_URLS.style3 },
+                { id: 'style4', image: FalAI.STYLE_URLS.style4 }
               ].map((style) => (
                 <button
                   key={style.id}

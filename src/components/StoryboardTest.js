@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import KeywordSelector from './KeywordSelector';
 import NodeRenderer, { NODE_TYPES, createNode } from './NodeRenderer';
-import { extractInterviewData, checkServiceHealth } from '../services/interviewExtractionAPI';
+import { checkServiceHealth, extractInterviewData } from '../services/personaAgentAPI';
 import { generatePersona, transformFrontendData, transformApiResponse } from '../services/personaGenerationService';
 import CozeTest from './CozeTest';
 // 移除LayoutEngine导入，所有布局逻辑都在本文件中定义
@@ -4060,13 +4060,21 @@ window.debugNodeSpacing = debugNodeSpacing;
   // 当前选中的访谈案例/记录
   const [currentCaseIndex, setCurrentCaseIndex] = useState(0);
   const [currentInterviewIndex, setCurrentInterviewIndex] = useState(0);
-  const currentCase = interviewCases[currentCaseIndex] || { title: '', interviews: [] };
-    const currentInterview = currentCase.interviews[currentInterviewIndex] || { text: '', title: '', date: '' };
+  const [currentCase, setCurrentCase] = useState(interviewCases[0] || { title: '', interviews: [] });
+  const currentInterview = currentCase.interviews[currentInterviewIndex] || { text: '', title: '', date: '' };
   
 
-  // 切换访谈记录时保持关键词，不重置
+  // 同步当前案例索引和案例数据
   useEffect(() => {
-    // 不再重置关键词，保持用户已提取的关键词
+    const newCase = interviewCases[currentCaseIndex] || { title: '', interviews: [] };
+    setCurrentCase(newCase);
+  }, [currentCaseIndex]);
+
+  // 切换访谈记录时加载当前访谈记录的关键词
+  useEffect(() => {
+    // 加载当前访谈记录的关键词，如果不存在则初始化为空数组
+    const currentInterviewKeywords = currentInterview.keywords || [];
+    setSelectedKeywords(currentInterviewKeywords);
   }, [currentInterviewIndex]);
 
   // 点击外部关闭下拉菜单
@@ -4317,14 +4325,51 @@ window.debugNodeSpacing = debugNodeSpacing;
 
   // 添加关键词
   const addKeyword = (text, typeId, isCardInfo = false) => {
+    // 计算关键词在文本中的准确位置
+    let startIndex = -1;
+    let endIndex = -1;
+    
+    if (!isCardInfo) {
+      // 找到关键词在文本中的位置
+      const textContent = currentInterview.text;
+      const keywordIndex = textContent.indexOf(text);
+      
+      if (keywordIndex !== -1) {
+        // 检查这个位置是否在说话人名称中
+        const beforeKeyword = textContent.substring(0, keywordIndex);
+        const lastColonIndex = beforeKeyword.lastIndexOf('：');
+        
+        if (lastColonIndex !== -1) {
+          // 如果关键词在冒号之后，说明在内容部分
+          startIndex = keywordIndex;
+          endIndex = keywordIndex + text.length;
+        } else {
+          // 如果关键词在冒号之前，说明在说话人名称中，不参与高亮
+          startIndex = -1;
+          endIndex = -1;
+        }
+      }
+    }
+    
+    // 调试信息
+    console.log('添加关键词:', {
+      text,
+      typeId,
+      isCardInfo,
+      startIndex,
+      endIndex,
+      textContent: currentInterview.text.substring(0, 100) + '...'
+    });
+    
     const newKeyword = {
       id: Date.now(),
       text: text,
       type: typeId,
       timestamp: new Date().toISOString(),
-      startIndex: isCardInfo ? -1 : currentInterview.text.indexOf(text), // 卡片信息使用-1表示不影响对话内容
-      endIndex: isCardInfo ? -1 : currentInterview.text.indexOf(text) + text.length,
-      isCardInfo: isCardInfo // 标记是否为卡片信息
+      startIndex: startIndex,
+      endIndex: endIndex,
+      isCardInfo: isCardInfo, // 标记是否为卡片信息
+      source: 'user_selected' // 标记为用户手动选择的关键词
     };
     const updatedKeywords = [...selectedKeywords, newKeyword];
     setSelectedKeywords(updatedKeywords);
@@ -4332,6 +4377,10 @@ window.debugNodeSpacing = debugNodeSpacing;
     // 同时更新到当前访谈记录中
     const updatedInterviewList = [...currentCase.interviews];
     updatedInterviewList[currentInterviewIndex].keywords = updatedKeywords;
+    setCurrentCase(prev => ({
+      ...prev,
+      interviews: updatedInterviewList
+    }));
     // 这里可以添加保存到本地存储或发送到服务器的逻辑
   };
 
@@ -4345,16 +4394,38 @@ window.debugNodeSpacing = debugNodeSpacing;
       type: customKeywordType,
       importance: 'medium', // 默认权重为中等
       timestamp: new Date().toISOString(),
-      isCustom: true // 标记为自定义关键词
+      startIndex: -1, // 自定义关键词不参与文本高亮
+      endIndex: -1,   // 自定义关键词不参与文本高亮
+      isCustom: true, // 标记为自定义关键词
+      source: 'user_custom' // 标记为用户自定义的关键词
     };
     
-    setSelectedKeywords(prev => [...prev, newKeyword]);
+    const updatedKeywords = [...selectedKeywords, newKeyword];
+    setSelectedKeywords(updatedKeywords);
+    
+    // 同时更新到当前访谈记录中
+    const updatedInterviewList = [...currentCase.interviews];
+    updatedInterviewList[currentInterviewIndex].keywords = updatedKeywords;
+    setCurrentCase(prev => ({
+      ...prev,
+      interviews: updatedInterviewList
+    }));
+    
     setCustomKeywordText(''); // 清空输入框
   };
 
   // 从关键词池中移除关键词
   const removeFromKeywordPool = (keywordId) => {
-    setSelectedKeywords(prev => prev.filter(keyword => keyword.id !== keywordId));
+    const updatedKeywords = selectedKeywords.filter(keyword => keyword.id !== keywordId);
+    setSelectedKeywords(updatedKeywords);
+    
+    // 同时更新到当前访谈记录中
+    const updatedInterviewList = [...currentCase.interviews];
+    updatedInterviewList[currentInterviewIndex].keywords = updatedKeywords;
+    setCurrentCase(prev => ({
+      ...prev,
+      interviews: updatedInterviewList
+    }));
   };
 
 
@@ -4415,12 +4486,24 @@ window.debugNodeSpacing = debugNodeSpacing;
       return renderDialogText(text);
     }
 
-    // 过滤掉卡片信息关键词，只保留影响对话内容的关键词
-    const contentKeywords = keywords.filter(keyword => !keyword.isCardInfo);
+    // 过滤掉卡片信息关键词和无效位置的关键词，只保留影响对话内容的关键词
+    const contentKeywords = keywords.filter(keyword => 
+      !keyword.isCardInfo && 
+      !keyword.isCustom &&
+      keyword.startIndex !== undefined && 
+      keyword.startIndex >= 0
+    );
     
     if (contentKeywords.length === 0) {
       return renderDialogText(text);
     }
+    
+    // 调试信息
+    console.log('渲染高亮文本:', {
+      text: text.substring(0, 100) + '...',
+      keywords: keywords,
+      contentKeywords: contentKeywords
+    });
 
     // 按位置排序关键词，确保按顺序渲染
     const sortedKeywords = [...contentKeywords].sort((a, b) => a.startIndex - b.startIndex);
@@ -4492,10 +4575,33 @@ window.debugNodeSpacing = debugNodeSpacing;
       speaker = paragraph.slice(0, speakerEndIndex);
       content = paragraph.slice(speakerEndIndex);
       
+      // 调试信息
+      console.log('处理对话段落:', {
+        paragraph,
+        speaker,
+        content,
+        speakerEndIndex,
+        keywords
+      });
+      
       // 为说话人名称创建独立的span，确保不受关键词高亮影响
       const isResearcher = speaker.includes('研究员');
       const speakerSpan = (
-        <span key={`speaker-${paragraphIndex}`} className={`inline-block font-medium ${isResearcher ? 'text-blue-600' : 'text-green-600'}`}>
+        <span 
+          key={`speaker-${paragraphIndex}`} 
+          className={`inline-block font-medium ${isResearcher ? 'text-gray-500' : 'text-blue-600'}`}
+          style={{ 
+            backgroundColor: 'transparent', 
+            pointerEvents: 'none', // 防止被选中或高亮
+            userSelect: 'none', // 防止被选中
+            WebkitUserSelect: 'none', // Safari支持
+            MozUserSelect: 'none', // Firefox支持
+            msUserSelect: 'none', // IE支持
+            position: 'relative', // 确保层级
+            zIndex: 10 // 确保在最上层
+          }}
+          data-speaker="true" // 添加标识，便于调试
+        >
           {speaker}
         </span>
       );
@@ -4506,13 +4612,38 @@ window.debugNodeSpacing = debugNodeSpacing;
       
       // 过滤并排序关键词，确保只处理内容部分
       const contentKeywords = keywords
+        .filter(keyword => 
+          keyword.startIndex !== undefined && 
+          keyword.startIndex >= 0 && 
+          !keyword.isCardInfo && 
+          !keyword.isCustom
+        ) // 只处理有有效位置且不是卡片信息或自定义的关键词
         .map(keyword => ({
           ...keyword,
           relativeStart: Math.max(0, keyword.startIndex - paragraphStartIndex),
           relativeEnd: Math.min(paragraph.length, keyword.endIndex - paragraphStartIndex)
         }))
-        .filter(keyword => keyword.relativeStart >= speakerEndIndex) // 只处理内容部分的关键词
+        .filter(keyword => {
+          // 确保关键词完全在内容部分，不在说话人名称中
+          const keywordStart = keyword.relativeStart;
+          const keywordEnd = keyword.relativeEnd;
+          
+          // 严格检查：关键词必须完全在说话人名称之后
+          if (keywordStart < speakerEndIndex) {
+            console.log('过滤掉说话人名称中的关键词:', keyword.text, '位置:', keywordStart, '说话人结束位置:', speakerEndIndex);
+            return false;
+          }
+          
+          return true;
+        })
         .sort((a, b) => a.relativeStart - b.relativeStart);
+      
+      // 调试信息
+      console.log('内容关键词:', {
+        contentKeywords,
+        speakerEndIndex,
+        paragraphLength: paragraph.length
+      });
       
       contentKeywords.forEach((keyword, keywordIndex) => {
         // 添加关键词前的普通文本
@@ -4556,9 +4687,11 @@ window.debugNodeSpacing = debugNodeSpacing;
       
       // 返回包含说话人名称和内容的完整段落
       return (
-        <div key={paragraphIndex} className={`mb-2 ${isResearcher ? 'mb-3' : 'mb-2'}`}>
+        <div key={paragraphIndex} className={`mb-2 ${isResearcher ? 'mb-3' : 'mb-2'}`} style={{ position: 'relative' }}>
           {speakerSpan}
-          {contentResult}
+          <span className="text-gray-800" style={{ position: 'relative', zIndex: 1 }}>
+            {contentResult}
+          </span>
         </div>
       );
     }
@@ -4568,11 +4701,19 @@ window.debugNodeSpacing = debugNodeSpacing;
     let currentIndex = 0;
     
     // 按在段落中的位置排序关键词
-    const sortedKeywords = keywords.map(keyword => ({
-      ...keyword,
-      relativeStart: Math.max(0, keyword.startIndex - paragraphStartIndex),
-      relativeEnd: Math.min(paragraph.length, keyword.endIndex - paragraphStartIndex)
-    })).sort((a, b) => a.relativeStart - b.relativeStart);
+    const sortedKeywords = keywords
+      .filter(keyword => 
+        keyword.startIndex !== undefined && 
+        keyword.startIndex >= 0 && 
+        !keyword.isCardInfo && 
+        !keyword.isCustom
+      ) // 只处理有有效位置且不是卡片信息或自定义的关键词
+      .map(keyword => ({
+        ...keyword,
+        relativeStart: Math.max(0, keyword.startIndex - paragraphStartIndex),
+        relativeEnd: Math.min(paragraph.length, keyword.endIndex - paragraphStartIndex)
+      }))
+      .sort((a, b) => a.relativeStart - b.relativeStart);
     
     sortedKeywords.forEach((keyword, keywordIndex) => {
       // 添加关键词前的普通文本
@@ -4643,13 +4784,22 @@ window.debugNodeSpacing = debugNodeSpacing;
     // 同时更新到当前访谈记录中
     const updatedInterviewList = [...currentCase.interviews];
     updatedInterviewList[currentInterviewIndex].keywords = updatedKeywords;
+    setCurrentCase(prev => ({
+      ...prev,
+      interviews: updatedInterviewList
+    }));
     // 这里可以添加保存到本地存储或发送到服务器的逻辑
   };
 
   // 生成用户画像
   const generatePersonas = async () => {
-    if (selectedKeywords.length === 0) {
-      alert('请先提取一些关键词');
+    // 收集所有访谈记录的关键词
+    const allInterviews = currentCase.interviews || [];
+    const allKeywords = allInterviews.reduce((acc, interview) => {
+      return acc.concat(interview.keywords || []);
+    }, []);
+    
+    if (allKeywords.length === 0) {
       return;
     }
 
@@ -4657,26 +4807,31 @@ window.debugNodeSpacing = debugNodeSpacing;
       // 显示加载状态
       setIsGeneratingPersonas(true);
       
-      // 准备数据：将前端数据转换为API所需的格式
+      // 准备数据：发送所有访谈记录
+      const interviewTexts = allInterviews.map(interview => interview.text).join('\n\n--- 访谈分隔符 ---\n\n');
+      
+      // 将前端数据转换为API所需的格式
       const interviewData = {
-        interview_text: currentInterview.text,
+        interview_text: interviewTexts, // 发送所有访谈记录
         user_info: currentInterview.userInfo || {},
         selected_bubbles: {
-          persona: selectedKeywords.filter(k => k.type === 'user_traits').map(k => k.text),
-          context: selectedKeywords.filter(k => k.type === 'elements').map(k => k.text),
-          goal: selectedKeywords.filter(k => k.type === 'goals').map(k => k.text),
-          pain: selectedKeywords.filter(k => k.type === 'pain_points').map(k => k.text),
-          emotion: selectedKeywords.filter(k => k.type === 'emotions').map(k => k.text),
+          persona: allKeywords.filter(k => k.type === 'user_traits').map(k => k.text),
+          context: allKeywords.filter(k => k.type === 'elements').map(k => k.text),
+          goal: allKeywords.filter(k => k.type === 'goals').map(k => k.text),
+          pain: allKeywords.filter(k => k.type === 'pain_points').map(k => k.text),
+          emotion: allKeywords.filter(k => k.type === 'emotions').map(k => k.text),
           identity: []
         }
       };
       
-
+      console.log('📋 发送所有访谈记录:', {
+        interviewCount: allInterviews.length,
+        totalTextLength: interviewTexts.length,
+        selectedBubbles: interviewData.selected_bubbles
+      });
       
       // 调用新的用户画像生成服务
       const result = await generatePersona(interviewData);
-      
-
       
       if (result.personas && result.personas.length > 0) {
         // 转换API返回的数据格式为前端使用的格式
@@ -4704,30 +4859,55 @@ window.debugNodeSpacing = debugNodeSpacing;
         
         setPersonas(convertedPersonas);
         
-        // 如果API返回了气泡数据，更新关键词
+        // 如果API返回了气泡数据，先清除当前各维度的气泡内容，然后赋值新的
         if (result.bubbles) {
+          console.log('🔄 更新气泡数据:', result.bubbles);
+          
+          // 先清除当前AI生成的气泡内容，保留用户选择的关键词
+          const currentBubbles = allKeywords.filter(k => k.source === 'agent_generated');
+          const remainingKeywords = allKeywords.filter(k => 
+            k.source === 'user_selected' || 
+            k.source === 'user_custom' || 
+            !k.source // 兼容旧数据，没有source属性的也保留
+          );
+          
+          console.log('🗑️ 清除的AI生成气泡:', currentBubbles.map(b => `${b.text} (${b.type})`));
+          console.log('💾 保留的用户关键词:', remainingKeywords.map(k => `${k.text} (${k.type}) [${k.source || 'legacy'}]`));
+          
+          // 生成新的气泡数据
           const newBubbles = [];
           let bubbleId = Date.now();
           
           // 转换气泡数据为关键词格式
           Object.entries(result.bubbles).forEach(([category, texts]) => {
-            texts.forEach(text => {
-              const keywordType = getBubbleCategoryType(category);
-              newBubbles.push({
-                id: bubbleId++,
-                text: text,
-                type: keywordType,
-                timestamp: new Date().toISOString(),
-                source: 'agent_generated'
+            if (Array.isArray(texts) && texts.length > 0) {
+              texts.forEach(text => {
+                const keywordType = getBubbleCategoryType(category);
+                newBubbles.push({
+                  id: bubbleId++,
+                  text: text,
+                  type: keywordType,
+                  timestamp: new Date().toISOString(),
+                  source: 'agent_generated'
+                });
               });
-            });
+            }
           });
           
-          // 合并新生成的气泡到现有关键词中
-          setSelectedKeywords(prev => [...prev, ...newBubbles]);
+          console.log('🆕 新生成的AI气泡:', newBubbles.map(b => `${b.text} (${b.type})`));
+          
+          // 合并用户选择的关键词和新生成的气泡
+          const updatedKeywords = [...remainingKeywords, ...newBubbles];
+          setSelectedKeywords(updatedKeywords);
+          
+          console.log('✅ 气泡数据更新完成:', {
+            removedBubbles: currentBubbles.length,
+            newBubbles: newBubbles.length,
+            totalKeywords: updatedKeywords.length,
+            userSelected: remainingKeywords.length,
+            aiGenerated: newBubbles.length
+          });
         }
-        
-
       } else {
         console.warn('⚠️ API返回的用户画像数据为空');
         // 生成默认画像
@@ -4757,7 +4937,6 @@ window.debugNodeSpacing = debugNodeSpacing;
       }
     } catch (error) {
       console.error('❌ 生成用户画像失败:', error);
-      alert('生成用户画像失败，请检查网络连接或稍后重试');
       
       // 生成默认画像作为备选
       const defaultPersona = {

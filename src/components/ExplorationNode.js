@@ -320,7 +320,8 @@ const ExplorationNode = ({
         explorationText: explorationText,
         userPersona: data.userPersona || {}, // 完整用户画像数据
         branchContext: data.branchContext || '', // 分支上下文（该分支之前所有分镜连起来的故事脚本）
-        currentFrameStory: data.currentFrameStory || '' // 当前分镜故事脚本
+        currentFrameStory: data.currentFrameStory || '', // 当前分镜故事脚本
+        keywordBubbles: bubbleDragArea.bubbles || [] // 用户拖入的关键词气泡
       };
       
       console.log('🔍 ExplorationNode: 准备调用情景探索API');
@@ -328,6 +329,7 @@ const ExplorationNode = ({
       console.log('🔍 ExplorationNode: 用户画像:', data.userPersona);
       console.log('🔍 ExplorationNode: 分支上下文:', data.branchContext);
       console.log('🔍 ExplorationNode: 当前分镜故事:', data.currentFrameStory);
+      console.log('🔍 ExplorationNode: 拖入的气泡:', bubbleDragArea.bubbles);
       console.log('🔍 ExplorationNode: 完整探索数据:', explorationData);
       
       // 调用情景探索API

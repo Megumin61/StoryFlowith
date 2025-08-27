@@ -132,6 +132,27 @@ const getKeywordTypeName = (type) => {
 };
 
 /**
+ * 提取访谈数据（兼容性函数）
+ * @param {Object} interviewData - 访谈数据
+ * @returns {Promise<Object>} 提取结果
+ */
+export const extractInterviewData = async (interviewData) => {
+  try {
+    console.log('📋 提取访谈数据:', interviewData);
+    // 这里可以添加实际的访谈数据提取逻辑
+    // 目前只是返回原始数据
+    return {
+      success: true,
+      data: interviewData,
+      message: '访谈数据提取完成'
+    };
+  } catch (error) {
+    console.error('❌ 提取访谈数据失败:', error);
+    throw error;
+  }
+};
+
+/**
  * 健康检查
  * @returns {Promise<boolean>} 服务是否正常
  */
