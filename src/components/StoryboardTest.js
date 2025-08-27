@@ -4070,12 +4070,33 @@ window.debugNodeSpacing = debugNodeSpacing;
     setCurrentCase(newCase);
   }, [currentCaseIndex]);
 
-  // 切换访谈记录时加载当前访谈记录的关键词
+  // 重新计算所有访谈记录的关键词并集的辅助函数
+  const recalculateMergedKeywords = useCallback((interviews) => {
+    const keywordMap = new Map(); // 用于去重，以关键词文本和类型为键
+    
+    interviews.forEach((interview, index) => {
+      const interviewKeywords = interview.keywords || [];
+      interviewKeywords.forEach(keyword => {
+        // 创建唯一键，用于去重
+        const uniqueKey = `${keyword.text}-${keyword.type}`;
+        
+        if (!keywordMap.has(uniqueKey)) {
+          keywordMap.set(uniqueKey, {
+            ...keyword,
+            sourceInterviewIndex: index
+          });
+        }
+      });
+    });
+    
+    return Array.from(keywordMap.values());
+  }, []);
+
+  // 切换访谈记录时，显示当前案例中所有访谈记录的关键词并集
   useEffect(() => {
-    // 加载当前访谈记录的关键词，如果不存在则初始化为空数组
-    const currentInterviewKeywords = currentInterview.keywords || [];
-    setSelectedKeywords(currentInterviewKeywords);
-  }, [currentInterviewIndex]);
+    const mergedKeywords = recalculateMergedKeywords(currentCase.interviews);
+    setSelectedKeywords(mergedKeywords);
+  }, [currentCaseIndex, currentInterviewIndex, recalculateMergedKeywords]);
 
   // 点击外部关闭下拉菜单
   useEffect(() => {
@@ -4351,15 +4372,7 @@ window.debugNodeSpacing = debugNodeSpacing;
       }
     }
     
-    // 调试信息
-    console.log('添加关键词:', {
-      text,
-      typeId,
-      isCardInfo,
-      startIndex,
-      endIndex,
-      textContent: currentInterview.text.substring(0, 100) + '...'
-    });
+
     
     const newKeyword = {
       id: Date.now(),
@@ -4371,16 +4384,18 @@ window.debugNodeSpacing = debugNodeSpacing;
       isCardInfo: isCardInfo, // 标记是否为卡片信息
       source: 'user_selected' // 标记为用户手动选择的关键词
     };
-    const updatedKeywords = [...selectedKeywords, newKeyword];
-    setSelectedKeywords(updatedKeywords);
-
-    // 同时更新到当前访谈记录中
+    // 更新到当前访谈记录中
     const updatedInterviewList = [...currentCase.interviews];
-    updatedInterviewList[currentInterviewIndex].keywords = updatedKeywords;
+    const currentInterviewKeywords = updatedInterviewList[currentInterviewIndex].keywords || [];
+    updatedInterviewList[currentInterviewIndex].keywords = [...currentInterviewKeywords, newKeyword];
     setCurrentCase(prev => ({
       ...prev,
       interviews: updatedInterviewList
     }));
+    
+    // 重新计算所有访谈记录的关键词并集
+    const mergedKeywords = recalculateMergedKeywords(updatedInterviewList);
+    setSelectedKeywords(mergedKeywords);
     // 这里可以添加保存到本地存储或发送到服务器的逻辑
   };
 
@@ -4400,32 +4415,46 @@ window.debugNodeSpacing = debugNodeSpacing;
       source: 'user_custom' // 标记为用户自定义的关键词
     };
     
-    const updatedKeywords = [...selectedKeywords, newKeyword];
-    setSelectedKeywords(updatedKeywords);
-    
-    // 同时更新到当前访谈记录中
+    // 更新到当前访谈记录中
     const updatedInterviewList = [...currentCase.interviews];
-    updatedInterviewList[currentInterviewIndex].keywords = updatedKeywords;
+    const currentInterviewKeywords = updatedInterviewList[currentInterviewIndex].keywords || [];
+    updatedInterviewList[currentInterviewIndex].keywords = [...currentInterviewKeywords, newKeyword];
     setCurrentCase(prev => ({
       ...prev,
       interviews: updatedInterviewList
     }));
+    
+    // 重新计算所有访谈记录的关键词并集
+    const mergedKeywords = recalculateMergedKeywords(updatedInterviewList);
+    setSelectedKeywords(mergedKeywords);
     
     setCustomKeywordText(''); // 清空输入框
   };
 
   // 从关键词池中移除关键词
   const removeFromKeywordPool = (keywordId) => {
-    const updatedKeywords = selectedKeywords.filter(keyword => keyword.id !== keywordId);
-    setSelectedKeywords(updatedKeywords);
+    // 找到要删除的关键词
+    const keywordToRemove = selectedKeywords.find(keyword => keyword.id === keywordId);
+    if (!keywordToRemove) return;
     
-    // 同时更新到当前访谈记录中
+    // 从对应的访谈记录中删除关键词
     const updatedInterviewList = [...currentCase.interviews];
-    updatedInterviewList[currentInterviewIndex].keywords = updatedKeywords;
+    const sourceInterviewIndex = keywordToRemove.sourceInterviewIndex || currentInterviewIndex;
+    
+    if (updatedInterviewList[sourceInterviewIndex] && updatedInterviewList[sourceInterviewIndex].keywords) {
+      updatedInterviewList[sourceInterviewIndex].keywords = updatedInterviewList[sourceInterviewIndex].keywords.filter(
+        keyword => keyword.id !== keywordId
+      );
+    }
+    
     setCurrentCase(prev => ({
       ...prev,
       interviews: updatedInterviewList
     }));
+    
+    // 重新计算所有访谈记录的关键词并集
+    const mergedKeywords = recalculateMergedKeywords(updatedInterviewList);
+    setSelectedKeywords(mergedKeywords);
   };
 
 
@@ -4498,12 +4527,7 @@ window.debugNodeSpacing = debugNodeSpacing;
       return renderDialogText(text);
     }
     
-    // 调试信息
-    console.log('渲染高亮文本:', {
-      text: text.substring(0, 100) + '...',
-      keywords: keywords,
-      contentKeywords: contentKeywords
-    });
+
 
     // 按位置排序关键词，确保按顺序渲染
     const sortedKeywords = [...contentKeywords].sort((a, b) => a.startIndex - b.startIndex);
@@ -4575,14 +4599,7 @@ window.debugNodeSpacing = debugNodeSpacing;
       speaker = paragraph.slice(0, speakerEndIndex);
       content = paragraph.slice(speakerEndIndex);
       
-      // 调试信息
-      console.log('处理对话段落:', {
-        paragraph,
-        speaker,
-        content,
-        speakerEndIndex,
-        keywords
-      });
+
       
       // 为说话人名称创建独立的span，确保不受关键词高亮影响
       const isResearcher = speaker.includes('研究员');
@@ -4778,17 +4795,28 @@ window.debugNodeSpacing = debugNodeSpacing;
 
   // 移除关键词
   const removeKeyword = (keywordId) => {
-    const updatedKeywords = selectedKeywords.filter(k => k.id !== keywordId);
-    setSelectedKeywords(updatedKeywords);
-
-    // 同时更新到当前访谈记录中
+    // 找到要删除的关键词
+    const keywordToRemove = selectedKeywords.find(keyword => keyword.id === keywordId);
+    if (!keywordToRemove) return;
+    
+    // 从对应的访谈记录中删除关键词
     const updatedInterviewList = [...currentCase.interviews];
-    updatedInterviewList[currentInterviewIndex].keywords = updatedKeywords;
+    const sourceInterviewIndex = keywordToRemove.sourceInterviewIndex || currentInterviewIndex;
+    
+    if (updatedInterviewList[sourceInterviewIndex] && updatedInterviewList[sourceInterviewIndex].keywords) {
+      updatedInterviewList[sourceInterviewIndex].keywords = updatedInterviewList[sourceInterviewIndex].keywords.filter(
+        keyword => keyword.id !== keywordId
+      );
+    }
+    
     setCurrentCase(prev => ({
       ...prev,
       interviews: updatedInterviewList
     }));
-    // 这里可以添加保存到本地存储或发送到服务器的逻辑
+    
+    // 重新计算所有访谈记录的关键词并集
+    const mergedKeywords = recalculateMergedKeywords(updatedInterviewList);
+    setSelectedKeywords(mergedKeywords);
   };
 
   // 生成用户画像
@@ -5616,9 +5644,11 @@ window.debugNodeSpacing = debugNodeSpacing;
                     {typeKeywords.map(keyword => (
                       <div
                         key={keyword.id}
-                        className={`inline-flex items-center justify-between p-2 rounded-lg border text-sm ${type.color} max-w-full`}
+                        className={`inline-flex items-center justify-between p-2 rounded-lg border text-sm ${type.color} max-w-full group`}
                       >
-                        <span className="flex-1 break-words pr-2">{keyword.text}</span>
+                        <div className="flex-1 pr-2">
+                          <span className="break-words">{keyword.text}</span>
+                        </div>
                         <button
                           onClick={() => removeKeyword(keyword.id)}
                           className="text-gray-500 hover:text-red-500 flex-shrink-0 p-0.5 rounded hover:bg-red-50 transition-colors"
