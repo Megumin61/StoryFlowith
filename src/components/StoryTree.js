@@ -160,7 +160,7 @@ function StoryTree({ storyData, selectedFrameId, onFrameSelect }) {
           {isCollapsed ? <PanelLeft className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
         </button>
       </div>
-      <div className="flex-grow overflow-y-auto p-2" id="story-tree-container">
+      <div className="flex-grow overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300" id="story-tree-container">
         {renderStoryTree()}
       </div>
     </aside>

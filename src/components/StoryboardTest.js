@@ -11,6 +11,7 @@ import NodeRenderer, { NODE_TYPES, createNode } from './NodeRenderer';
 import { extractInterviewData, checkServiceHealth } from '../services/interviewExtractionAPI';
 import { generatePersona, transformFrontendData, transformApiResponse } from '../services/personaGenerationService';
 import CozeTest from './CozeTest';
+// 移除LayoutEngine导入，所有布局逻辑都在本文件中定义
 
 // 导入测试图像和风格图
 import testImage from '../images/test.png';
@@ -105,7 +106,7 @@ const getNodeDisplayWidth = (node) => {
   if (!node) return DYNAMIC_LAYOUT_CONFIG.NODE_WIDTH.COLLAPSED;
   
   // 严格检查是否为探索节点
-  const isExplorationNode = node.type === NODE_TYPES.EXPLORATION || node.explorationData?.isExplorationNode;
+  const isExplorationNode = node.type === 'exploration' || node.explorationData?.isExplorationNode;
   
   // 根据节点类型调整基础宽度
   if (isExplorationNode) {
@@ -125,22 +126,10 @@ const getNodeDisplayWidth = (node) => {
   if (node.state === 'generating' || node.state === 'expanded' || node.state === 'editing') {
     // 画面生成状态和展开状态：1200px (横向布局)
     baseWidth = 1200;
-  } else if (node.state === 'collapsedWithImage' || (node.image && node.state === 'collapsed')) {
-    // 带有图像的折叠状态：320px
-    baseWidth = 320;
   } else {
-    // 普通折叠状态：240px
+    // 折叠状态：240px
     baseWidth = 240;
   }
-  
-  // 调试日志
-  console.log('🔧 getNodeDisplayWidth:', {
-    nodeId: node.id,
-    nodeState: node.state,
-    hasImage: !!node.image,
-    calculatedWidth: baseWidth,
-    nodeStatesRef: nodeStatesRef[node.id]
-  });
   
   // 如果显示悬浮面板，加上面板宽度
   const showPanel = node.showFloatingPanel;
@@ -149,7 +138,7 @@ const getNodeDisplayWidth = (node) => {
   return totalWidth;
 };
 
-// 辅助函数：动态计算节点高度 - 移到组件级别以便全局使用
+// 辅助函数：动态计算节点高度
 const getNodeHeight = (node) => {
   if (!node) return 200;
   
@@ -168,45 +157,30 @@ const calculateDynamicGap = (currentNode, currentIndex, allNodes) => {
   let gap = HORIZONTAL_GAP;
   
   // 检查当前节点和下一个节点的类型
-  const isCurrentExploration = currentNode.type === NODE_TYPES.EXPLORATION || currentNode.explorationData?.isExplorationNode;
+  const isCurrentExploration = currentNode.type === 'exploration' || currentNode.explorationData?.isExplorationNode;
   const nextNode = allNodes[currentIndex + 1];
-  const isNextExploration = nextNode?.type === NODE_TYPES.EXPLORATION || nextNode?.explorationData?.isExplorationNode;
+  const isNextExploration = nextNode?.type === 'exploration' || nextNode?.explorationData?.isExplorationNode;
   
   // 分镜节点之间的间距 - 保持恒定间距
   if (!isCurrentExploration && !isNextExploration) {
     // 两个都是分镜节点，使用固定间距
     gap = 50;
-    
-    // 调试日志：检查分镜节点的状态
-    console.log('🔧 分镜节点间距计算:', {
-      currentId: currentNode.id,
-      currentState: currentNode.state,
-      currentWidth: getNodeDisplayWidth(currentNode),
-      nextId: nextNode?.id,
-      nextState: nextNode?.state,
-      nextWidth: nextNode ? getNodeDisplayWidth(nextNode) : 'N/A',
-      calculatedGap: gap
-    });
   }
   // 分镜节点与探索节点之间的间距
   else if (!isCurrentExploration && isNextExploration) {
     // 当前是分镜节点，下一个是探索节点
-    // 增加间距避免重合
-    gap = 80;
+    gap = 50;
   }
   // 探索节点与分镜节点之间的间距
   else if (isCurrentExploration && !isNextExploration) {
     // 当前是探索节点，下一个是分镜节点
-    // 增加间距避免重合，特别是当探索节点展开时
-    gap = 100;
+    gap = 60;
   }
   // 探索节点之间的间距
   else if (isCurrentExploration && isNextExploration) {
     // 两个都是探索节点
     gap = 60;
   }
-  
-
   
   return gap;
 };
@@ -254,12 +228,7 @@ const layoutTree = (storyModel, selectedFrameId, getNodeById, getBranchById, upd
       if (index === 0) {
         // 第一个节点：使用基准位置，如果节点有baseX则使用baseX，否则使用startX
         node.pos = { x: node.baseX !== undefined ? node.baseX : startX, y: startY };
-        console.log('🔧 布局第一个节点:', {
-          nodeId: node.id,
-          nodeState: node.state,
-          hasImage: !!node.image,
-          pos: node.pos
-        });
+
       } else {
         // 其他节点：基于前一个节点的位置计算
         const prevNode = branchNodes[index - 1];
@@ -267,16 +236,7 @@ const layoutTree = (storyModel, selectedFrameId, getNodeById, getBranchById, upd
         const dynamicGap = calculateDynamicGap(prevNode, index - 1, branchNodes);
         node.pos = { x: prevNode.pos.x + prevNodeWidth + dynamicGap, y: startY };
         
-        console.log('🔧 布局后续节点:', {
-          nodeId: node.id,
-          nodeState: node.state,
-          hasImage: !!node.image,
-          prevNodeId: prevNode.id,
-          prevNodeState: prevNode.state,
-          prevNodeWidth,
-          dynamicGap,
-          pos: node.pos
-        });
+
       }
 
       // 设置连接关系 - 同一分支内的节点不连接，只连接分支间的关系
@@ -387,40 +347,28 @@ const updateNodeState = (nodeId, state, isExpanded) => {
     lastUpdated: Date.now()
   };
   
-  console.log('🔧 updateNodeState:', {
-    nodeId,
-    state,
-    isExpanded,
-    timestamp: new Date().toISOString()
-  });
-  
   // 立即触发动态重新布局，确保节点间距保持动态不变
-  requestAnimationFrame(() => {
-    const currentNode = globalGetNodeById ? globalGetNodeById(nodeId) : null;
-    if (!currentNode) return;
+  const currentNode = globalGetNodeById ? globalGetNodeById(nodeId) : null;
+  if (!currentNode) return;
 
-    const isExplorationNode = currentNode.type === NODE_TYPES.EXPLORATION || currentNode.explorationData?.isExplorationNode;
+  const isExplorationNode = currentNode.type === NODE_TYPES.EXPLORATION || currentNode.explorationData?.isExplorationNode;
 
-    if (isExplorationNode) {
-      // 情景探索节点尺寸变化会影响子分支起点，必须做全局递归布局
-      console.log('🔧 探索节点状态变化，执行全局布局');
-      globalLayoutTree();
-    } else if (currentNode.branchId) {
-      // 分镜节点状态变化，使用智能重新布局保持后续节点间距
-      const branch = globalGetBranchById ? globalGetBranchById(currentNode.branchId) : null;
-      if (branch) {
-        console.log('🔧 分镜节点状态变化，执行智能重新布局');
-        smartRelayout(branch, nodeId);
-      } else {
-        console.log('🔧 无法定位分支，执行全局布局');
-        globalLayoutTree();
-      }
+  if (isExplorationNode) {
+    // 情景探索节点尺寸变化会影响子分支起点，必须做全局递归布局
+    globalLayoutTree();
+  } else if (currentNode.branchId) {
+    // 分镜节点状态变化，使用智能重新布局保持后续节点间距
+    const branch = globalGetBranchById ? globalGetBranchById(currentNode.branchId) : null;
+    if (branch) {
+      // 立即执行智能重新布局，避免延迟
+      smartRelayout(branch, nodeId);
     } else {
-      // 兜底：无法定位分支时执行全局布局
-      console.log('🔧 兜底处理，执行全局布局');
       globalLayoutTree();
     }
-  });
+  } else {
+    // 兜底：无法定位分支时执行全局布局
+    globalLayoutTree();
+  }
 };
 
 // 从指定索引开始重新布局节点（暂时注释掉，避免未使用函数警告）
@@ -479,13 +427,6 @@ const smartRelayout = (branch, changedNodeId) => {
   const changedNodeIndex = branchNodes.findIndex(node => node.id === changedNodeId);
   if (changedNodeIndex === -1) return;
   
-  console.log('🔧 smartRelayout 开始:', {
-    branchId: branch.id,
-    changedNodeId,
-    changedNodeIndex,
-    totalNodes: branchNodes.length
-  });
-  
   // 从变更节点开始，重新计算所有后续节点的位置
   for (let i = changedNodeIndex; i < branchNodes.length; i++) {
     const node = branchNodes[i];
@@ -495,7 +436,6 @@ const smartRelayout = (branch, changedNodeId) => {
       if (node.baseX !== undefined) {
         const newX = node.baseX;
         if (Math.abs(node.pos.x - newX) > 1) {
-          console.log('🔧 更新第一个节点位置:', { nodeId: node.id, oldX: node.pos.x, newX });
           globalUpdateNode(node.id, {
             pos: { x: newX, y: node.pos.y }
           });
@@ -510,28 +450,75 @@ const smartRelayout = (branch, changedNodeId) => {
         const dynamicGap = calculateDynamicGap(prevNode, i - 1, branchNodes);
         const newX = prevNode.pos.x + prevNodeWidth + dynamicGap;
         
-        console.log('🔧 计算节点位置:', {
-          nodeId: node.id,
-          prevNodeId: prevNode.id,
-          prevNodeState: prevNode.state,
-          prevNodeWidth,
-          dynamicGap,
-          oldX: node.pos.x,
-          newX
-        });
+        // 增强重叠检测：检查是否与前一个节点重叠
+        const minGap = 10; // 最小间距
+        const actualGap = newX - (prevNode.pos.x + prevNodeWidth);
         
-        // 只有当位置真正需要改变时才更新
-        if (Math.abs(node.pos.x - newX) > 1) {
-          console.log('🔧 更新节点位置:', { nodeId: node.id, oldX: node.pos.x, newX });
+        if (actualGap < minGap) {
+          // 如果间距太小，强制增加间距
+          const adjustedX = prevNode.pos.x + prevNodeWidth + minGap;
           globalUpdateNode(node.id, {
-            pos: { x: newX, y: node.pos.y }
+            pos: { x: adjustedX, y: node.pos.y }
           });
+        } else {
+          // 只有当位置真正需要改变时才更新
+          if (Math.abs(node.pos.x - newX) > 1) {
+            globalUpdateNode(node.id, {
+              pos: { x: newX, y: node.pos.y }
+            });
+          }
         }
       }
     }
   }
   
-  console.log('🔧 smartRelayout 完成');
+  // 立即检查是否有重叠，进行最终调整，避免延迟
+  checkAndFixOverlaps(branch, 0);
+};
+
+// 新增：检查并修复节点重叠
+const checkAndFixOverlaps = (branch, depth = 0) => {
+  if (!globalGetNodeById || !globalUpdateNode) return;
+  
+  // 防止无限递归，最多递归5次
+  if (depth > 5) {
+    console.warn('checkAndFixOverlaps: 达到最大递归深度，停止检查');
+    return;
+  }
+  
+  const uniqueIds = Array.from(new Set(branch.nodeIds));
+  const branchNodes = uniqueIds
+    .map(nodeId => globalGetNodeById(nodeId))
+    .filter(Boolean)
+    .sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
+  
+  let hasOverlap = false;
+  
+  for (let i = 1; i < branchNodes.length; i++) {
+    const prevNode = branchNodes[i - 1];
+    const currentNode = branchNodes[i];
+    
+    if (prevNode.pos && currentNode.pos && 
+        typeof prevNode.pos.x === 'number' && typeof currentNode.pos.x === 'number') {
+      
+      const prevNodeWidth = getNodeDisplayWidth(prevNode);
+      const minGap = 20; // 最小间距
+      const expectedX = prevNode.pos.x + prevNodeWidth + minGap;
+      
+      if (currentNode.pos.x < expectedX) {
+        // 发现重叠，修复位置
+        globalUpdateNode(currentNode.id, {
+          pos: { x: expectedX, y: currentNode.pos.y }
+        });
+        hasOverlap = true;
+      }
+    }
+  }
+  
+  // 如果修复了重叠，递归检查，但限制深度
+  if (hasOverlap) {
+    checkAndFixOverlaps(branch, depth + 1);
+  }
 };
 
 // 初始化节点状态函数
@@ -576,7 +563,7 @@ const triggerDynamicRelayout = () => {
 // 中间页面组件 - 已被删除，避免语法错误
 
 // 左侧边栏组件 - 重构为支持分支结构
-function StoryboardTree({ storyModel, selectedFrameId, onFrameSelect, onFrameReorder, onDragStateUpdate, draggedNodeId, dragTargetIndex }) {
+function StoryboardTree({ storyModel, selectedFrameId, onFrameSelect, onFrameReorder, onDragStateUpdate, draggedNodeId, dragTargetIndex, onNodeStateChange }) {
   const renderStoryTree = () => {
     if (!storyModel || !storyModel.branches || !storyModel.nodes) {
       return null;
@@ -607,6 +594,7 @@ function StoryboardTree({ storyModel, selectedFrameId, onFrameSelect, onFrameReo
             onDragStateUpdate={onDragStateUpdate}
             draggedNodeId={draggedNodeId}
             dragTargetIndex={dragTargetIndex}
+            onNodeStateChange={onNodeStateChange}
           />
         ))}
       </div>
@@ -616,7 +604,7 @@ function StoryboardTree({ storyModel, selectedFrameId, onFrameSelect, onFrameReo
   return renderStoryTree();
 }
 
-function BranchTimeline({ branch, storyModel, selectedFrameId, onFrameSelect, onFrameReorder, branchIndex, onDragStateUpdate, draggedNodeId, dragTargetIndex }) {
+function BranchTimeline({ branch, storyModel, selectedFrameId, onFrameSelect, onFrameReorder, branchIndex, onDragStateUpdate, draggedNodeId, dragTargetIndex, onNodeStateChange }) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [dragOverNodeId, setDragOverNodeId] = useState(null);
   const [dragOverPosition, setDragOverPosition] = useState(null); // 'before' | 'after' | null
@@ -626,6 +614,17 @@ function BranchTimeline({ branch, storyModel, selectedFrameId, onFrameSelect, on
   const toggleExpand = (e) => {
     e.stopPropagation();
     setIsExpanded(prev => !prev);
+    
+    // 当分支展开/折叠状态变化时，触发节点状态检查和布局更新
+    if (onNodeStateChange) {
+      // 获取分支中的第一个节点作为触发点
+      const firstNode = branchNodes[0];
+      if (firstNode) {
+        // 触发布局更新，确保节点位置正确
+        // 使用当前节点的实际状态，而不是固定值
+        onNodeStateChange(firstNode.id, firstNode.state || 'collapsed', false);
+      }
+    }
   };
 
   const getBranchName = useCallback(() => {
@@ -649,7 +648,7 @@ function BranchTimeline({ branch, storyModel, selectedFrameId, onFrameSelect, on
   const renderNodeRow = (node, indexInBranch) => {
     const isExploration = node.type === NODE_TYPES.EXPLORATION || node.explorationData?.isExplorationNode;
     const isSelected = selectedFrameId === node.id;
-    const icon = isExploration ? '🔍' : '📽️';
+    const icon = isExploration ? '🔍' : '🎬';
     const label = node.label || (isExploration ? '情景探索' : `分镜 ${(node.nodeIndex || 0) + 1}`);
 
     const handleDragStart = (e) => {
@@ -942,6 +941,7 @@ function BranchTimeline({ branch, storyModel, selectedFrameId, onFrameSelect, on
                             onFrameSelect={onFrameSelect}
                             onFrameReorder={onFrameReorder}
                             branchIndex={childIdx}
+                            onNodeStateChange={onNodeStateChange}
                           />
                         ))}
                       </div>
@@ -1342,7 +1342,7 @@ function StoryboardCanvas({
 
   // 悬浮按钮事件处理函数 - 使用新的树状数据结构
   const handleAddFrame = (nodeId) => {
-    console.log('🔧 handleAddFrame 被调用，节点ID:', nodeId);
+
     
     // 获取目标节点
     const targetNode = getNodeById(nodeId);
@@ -1359,12 +1359,7 @@ function StoryboardCanvas({
       return;
     }
 
-    console.log('🔧 目标节点信息:', {
-      id: targetNode.id,
-      branchId: targetBranchId,
-      currentIndex: targetBranch.nodeIds.indexOf(nodeId),
-      totalNodes: targetBranch.nodeIds.length
-    });
+
 
     // 计算插入位置 - 插入到当前节点之后
     const currentIndex = targetBranch.nodeIds.indexOf(nodeId);
@@ -1469,7 +1464,7 @@ function StoryboardCanvas({
                     position: 'absolute',
                     zIndex: getNodeZIndex() // 动态设置z-index
                   }}
-                  onClick={() => onFrameSelect(frameData.id)}
+                  onClick={() => { onFrameSelect(frameData.id); setTimeout(() => globalLayoutTree(), 0); }}
                 >
                   <NodeRenderer
                     node={frameData}
@@ -1663,7 +1658,8 @@ function PersonaStoryPage({
               context: storyAreas.area1.keywords.filter(k => k.type === 'elements').map(k => k.text),
               goal: storyAreas.area1.keywords.filter(k => k.type === 'goals').map(k => k.text),
               pain: storyAreas.area1.keywords.filter(k => k.type === 'pain_points').map(k => k.text),
-              emotion: storyAreas.area1.keywords.filter(k => k.type === 'emotions').map(k => k.text)
+              emotion: storyAreas.area1.keywords.filter(k => k.type === 'emotions').map(k => k.text),
+              identity: []
             }
           },
           area2: {
@@ -1673,19 +1669,20 @@ function PersonaStoryPage({
               context: storyAreas.area2.keywords.filter(k => k.type === 'elements').map(k => k.text),
               goal: storyAreas.area2.keywords.filter(k => k.type === 'goals').map(k => k.text),
               pain: storyAreas.area2.keywords.filter(k => k.type === 'pain_points').map(k => k.text),
-              emotion: storyAreas.area2.keywords.filter(k => k.type === 'emotions').map(k => k.text)
+              emotion: storyAreas.area2.keywords.filter(k => k.type === 'emotions').map(k => k.text),
+              identity: []
             }
           }
         }
       };
 
-      console.log('📤 准备发送到故事生成API的数据:', storyData);
+
 
       // 调用故事脚本生成服务
       const { generateStoryScript } = await import('../services/personaGenerationService');
       const result = await generateStoryScript(storyData);
 
-      console.log('🎯 故事生成API返回结果:', result);
+
 
       if (result.stories && result.stories.length > 0) {
         // 转换API返回的数据格式为前端使用的格式
@@ -1711,7 +1708,7 @@ function PersonaStoryPage({
         }));
 
         setGeneratedStories(convertedStories);
-        console.log('✅ 故事脚本生成成功:', convertedStories);
+
       } else {
         console.warn('⚠️ API返回的故事数据为空');
         setGeneratedStories([]);
@@ -1999,7 +1996,7 @@ function PersonaStoryPage({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3">
+          <div className="flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300">
             <div className="space-y-3">
               {keywordTypes.map(type => {
                 const typeKeywords = selectedKeywords.filter(k => k.type === type.id);
@@ -2012,7 +2009,8 @@ function PersonaStoryPage({
                       <span className={`w-2.5 h-2.5 rounded-full mr-2 ${type.color.includes('blue') ? 'bg-blue-400' :
                         type.color.includes('green') ? 'bg-green-400' :
                           type.color.includes('red') ? 'bg-red-400' :
-                            type.color.includes('yellow') ? 'bg-yellow-400' : 'bg-purple-400'}`}></span>
+                            type.color.includes('amber') ? 'bg-amber-400' :
+                              type.color.includes('purple') ? 'bg-purple-400' : 'bg-gray-400'}`}></span>
                       {type.name}
                     </h3>
                     <div className="flex flex-wrap gap-1.5">
@@ -3221,18 +3219,18 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
 
       if (isExplorationNode && widthAffectingExploration) {
         // 情景探索节点尺寸变化会影响子分支，需要全局递归布局
-        requestAnimationFrame(() => globalLayoutTree());
+        setTimeout(() => globalLayoutTree(), 0);
       } else if (!isExplorationNode && widthAffectingStoryboard) {
         // 分镜节点的小面板显示/隐藏或展开状态变化，立即重新布局其后的节点
         if (node && node.branchId) {
           const branch = getBranchById(node.branchId);
           if (branch) {
-            requestAnimationFrame(() => smartRelayout(branch, nodeId));
+            setTimeout(() => smartRelayout(branch, nodeId), 0);
           } else {
-            requestAnimationFrame(() => globalLayoutTree());
+            setTimeout(() => globalLayoutTree(), 0);
           }
         } else {
-          requestAnimationFrame(() => globalLayoutTree());
+          setTimeout(() => globalLayoutTree(), 0);
         }
       }
     } catch (error) {
@@ -3241,13 +3239,13 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   }, []);
 
   const removeNode = useCallback((nodeId) => {
-    console.log('🔧 removeNode 被调用，节点ID:', nodeId);
+
     
     setStoryModel(prev => {
       const newNodes = { ...prev.nodes };
       if (newNodes[nodeId]) {
         delete newNodes[nodeId];
-        console.log('🔧 节点已从 storyModel.nodes 中删除:', nodeId);
+
       } else {
         console.warn('❌ 要删除的节点在 storyModel.nodes 中不存在:', nodeId);
       }
@@ -3308,7 +3306,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   }, [storyModel]);
 
   const addNodeToBranch = useCallback((branchId, nodeId, position = 'end') => {
-    console.log('🔧 addNodeToBranch 被调用:', { branchId, nodeId, position });
+
     
     setStoryModel(prev => {
       const branch = prev.branches[branchId];
@@ -3326,7 +3324,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       let newNodeIds = [...branch.nodeIds];
       if (position === 'end') {
         newNodeIds.push(nodeId);
-        console.log('🔧 添加到分支末尾');
+
       } else if (typeof position === 'number') {
         // 确保位置在有效范围内
         const validPosition = Math.max(0, Math.min(position, newNodeIds.length));
@@ -3343,7 +3341,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
               ...updatedNodes[nodeIdToUpdate],
               nodeIndex: i
             };
-            console.log('🔧 更新节点索引:', nodeIdToUpdate, '->', i);
+
           }
         }
         
@@ -3353,7 +3351,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
             ...updatedNodes[nodeId],
             nodeIndex: validPosition
           };
-          console.log('🔧 设置新节点索引:', nodeId, '->', validPosition);
+
         }
         
         return {
@@ -3383,7 +3381,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   }, []);
 
   const removeNodeFromBranch = useCallback((branchId, nodeId) => {
-    console.log('🔧 removeNodeFromBranch 被调用:', { branchId, nodeId });
+
     
     setStoryModel(prev => {
       const branch = prev.branches[branchId];
@@ -3393,11 +3391,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       }
 
       const newNodeIds = branch.nodeIds.filter(id => id !== nodeId);
-      console.log('🔧 分支节点更新:', { 
-        oldNodeIds: branch.nodeIds, 
-        newNodeIds, 
-        removedNodeId: nodeId 
-      });
+
 
       return {
         ...prev,
@@ -3417,45 +3411,33 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     setLayoutTreeParams(storyModel, selectedFrameId, getNodeById, getBranchById, updateNode);
   }, [storyModel.nodes, storyModel.branches, selectedFrameId, getBranchById, getNodeById, updateNode]); // 添加必要的依赖项
 
-  // 监听节点状态变化，实时更新布局
-  useEffect(() => {
-    // 创建一个定时器来检查节点状态变化
-    const interval = setInterval(() => {
-      // 检查是否有节点状态发生变化
-      const currentNodes = Object.values(storyModel.nodes);
-      let hasStateChange = false;
-      
-      currentNodes.forEach(node => {
-        const nodeState = nodeStatesRef[node.id];
-        if (nodeState) {
-          // 检查节点是否展开或显示面板
-          const isCurrentlyExpanded = node.state === 'expanded' || node.state === 'editing';
-          const isCurrentlyShowingPanel = node.showFloatingPanel;
-          
-          if (nodeState.isExpanded !== isCurrentlyExpanded || 
-              nodeState.showFloatingPanel !== isCurrentlyShowingPanel) {
-            hasStateChange = true;
-            
-            // 更新节点状态引用
-            nodeStatesRef[node.id] = {
-              ...nodeState,
-              isExpanded: isCurrentlyExpanded,
-              showFloatingPanel: isCurrentlyShowingPanel,
-              lastUpdated: Date.now()
-            };
-          }
-        }
-      });
-      
-      // 如果有状态变化，触发布局更新
-      if (hasStateChange) {
-    
-        requestAnimationFrame(() => globalLayoutTree());
-      }
-    }, 100); // 每100ms检查一次
-    
-    return () => clearInterval(interval);
-  }, [storyModel.nodes]);
+  // 监听节点状态变化，实时更新布局（改为由 updateNode/updateNodeState 即时触发，无需轮询）
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     const currentNodes = Object.values(storyModel.nodes);
+  //     let hasStateChange = false;
+  //     currentNodes.forEach(node => {
+  //       const nodeState = nodeStatesRef[node.id];
+  //       if (nodeState) {
+  //         const isCurrentlyExpanded = node.state === 'expanded' || node.state === 'editing';
+  //         const isCurrentlyShowingPanel = node.showFloatingPanel;
+  //         if (nodeState.isExpanded !== isCurrentlyExpanded || nodeState.showFloatingPanel !== isCurrentlyShowingPanel) {
+  //           hasStateChange = true;
+  //           nodeStatesRef[node.id] = {
+  //             ...nodeState,
+  //             isExpanded: isCurrentlyExpanded,
+  //             showFloatingPanel: isCurrentlyShowingPanel,
+  //             lastUpdated: Date.now()
+  //           };
+  //         }
+  //       }
+  //     });
+  //     if (hasStateChange) {
+  //       setTimeout(() => globalLayoutTree(), 0);
+  //     }
+  //   }, 200);
+  //   return () => clearInterval(interval);
+  // }, [storyModel.nodes]);
 
   // 获取分支上下文 - 该分支之前所有的分镜连起来的故事脚本
   const getBranchContext = (branchId, currentNodeId) => {
@@ -3501,13 +3483,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       
       // 用句号连接，确保故事流畅
       const context = contextParts.join('。') + '。';
-      console.log('🔧 分支上下文构建:', {
-        branchId,
-        currentNodeId,
-        previousNodesCount: previousNodes.length,
-        contextParts,
-        finalContext: context
-      });
+
       
       return context;
     } catch (error) {
@@ -3519,9 +3495,65 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   // 将getBranchContext函数暴露到全局，供StoryNode组件使用
   window.getBranchContext = getBranchContext;
 
+// 调试函数：监控节点间距状态
+const debugNodeSpacing = () => {
+  if (!globalStoryModel || !globalGetNodeById || !globalGetBranchById) {
+    console.log('🔍 调试信息：全局函数未初始化');
+    return;
+  }
+  
+  console.log('🔍 开始检查节点间距状态...');
+  
+  Object.values(globalStoryModel.branches).forEach((branch, branchIndex) => {
+    console.log(`📁 分支 ${branchIndex + 1}:`, branch.id);
+    
+    const branchNodes = branch.nodeIds
+      .map(nodeId => globalGetNodeById(nodeId))
+      .filter(Boolean)
+      .sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
+    
+    branchNodes.forEach((node, nodeIndex) => {
+      const nodeState = nodeStatesRef[node.id];
+      const width = getNodeDisplayWidth(node);
+      const pos = node.pos;
+      
+      console.log(`  📍 节点 ${nodeIndex + 1}:`, {
+        id: node.id,
+        state: node.state,
+        nodeStateRef: nodeState ? nodeState.state : 'undefined',
+        width,
+        position: pos,
+        showFloatingPanel: node.showFloatingPanel,
+        hasImage: !!node.image
+      });
+      
+      // 检查与前一个节点的间距
+      if (nodeIndex > 0) {
+        const prevNode = branchNodes[nodeIndex - 1];
+        const prevWidth = getNodeDisplayWidth(node);
+        const expectedGap = calculateDynamicGap(prevNode, nodeIndex - 1, branchNodes);
+        const actualGap = pos.x - (prevNode.pos.x + prevWidth);
+        
+        console.log(`    📏 间距检查:`, {
+          expectedGap,
+          actualGap,
+          isOverlapping: actualGap < 10,
+          prevNodeWidth: prevWidth,
+          prevNodePos: prevNode.pos
+        });
+      }
+    });
+  });
+  
+  console.log('🔍 节点间距状态检查完成');
+};
+
+// 将调试函数暴露到全局
+window.debugNodeSpacing = debugNodeSpacing;
+
   // 情景探索相关函数 - 使用新的树状数据结构
   const handleExploreScene = (nodeId, personas = []) => {
-    console.log('🔧 handleExploreScene 被调用，节点ID:', nodeId);
+
     
     // 获取源节点
     const sourceNode = getNodeById(nodeId);
@@ -3549,12 +3581,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       return;
     }
 
-    console.log('🔧 源节点信息:', {
-      id: sourceNode.id,
-      branchId: sourceBranchId,
-      currentIndex: sourceBranch.nodeIds.indexOf(nodeId),
-      totalNodes: sourceBranch.nodeIds.length
-    });
+
 
     // 计算插入位置 - 插入到当前节点之后
     const currentIndex = sourceBranch.nodeIds.indexOf(nodeId);
@@ -3569,37 +3596,19 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
 
     // 获取用户画像数据 - 从传入的personas参数获取，确保是完整的用户画像信息
     const userPersona = personas && personas.length > 0 ? personas[0] : {};
-    console.log('🔧 用户画像数据:', userPersona);
-    console.log('🔍 用户画像详情:', {
-      name: userPersona.name,
-      age: userPersona.age,
-      personality: userPersona.personality,
-      goals: userPersona.goals
-    });
+
+
     
     // 获取分支上下文 - 该分支之前所有的分镜连起来的故事脚本
     const branchContext = getBranchContext(sourceBranchId, nodeId);
-    console.log('🔧 分支上下文:', branchContext);
+
     
     // 获取当前分镜的故事脚本
     const currentFrameStory = sourceNode.text || sourceNode.prompt || '';
-    console.log('🔧 当前分镜故事:', currentFrameStory);
-    console.log('🔍 源节点详情:', {
-      id: sourceNode.id,
-      type: sourceNode.type,
-      text: sourceNode.text,
-      prompt: sourceNode.prompt,
-      branchId: sourceNode.branchId
-    });
+
+
     
     // 数据完整性验证
-    console.log('🔍 创建探索节点前的数据验证:');
-    console.log('  - userPersona 存在:', !!userPersona);
-    console.log('  - branchContext 存在:', !!branchContext);
-    console.log('  - currentFrameStory 存在:', !!currentFrameStory);
-    console.log('  - userPersona 内容:', userPersona);
-    console.log('  - branchContext 内容:', branchContext);
-    console.log('  - currentFrameStory 内容:', currentFrameStory);
     
     // 使用节点工厂函数创建探索节点
     const explorationNode = createNode(NODE_TYPES.EXPLORATION, {
@@ -3617,13 +3626,8 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       }
     });
 
-    console.log('🔧 新探索节点创建完成:', explorationNode);
-    console.log('🔍 探索节点数据验证:');
-    console.log('  - 用户画像:', explorationNode.userPersona);
-    console.log('  - 分支上下文:', explorationNode.branchContext);
-    console.log('  - 当前分镜故事:', explorationNode.currentFrameStory);
-    console.log('  - 探索节点类型:', explorationNode.type);
-    console.log('  - 探索节点ID:', explorationNode.id);
+
+
 
     // 添加探索节点到数据模型
     addNode(explorationNode);
@@ -3647,7 +3651,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   };
 
   const handleDeleteFrame = (nodeId) => {
-    console.log('🔧 handleDeleteFrame 被调用，节点ID:', nodeId);
+
 
     // 获取要删除的节点
     const nodeToDelete = getNodeById(nodeId);
@@ -3692,26 +3696,26 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
 
   // 处理生成分支 - 使用新的树状数据结构
   const handleGenerateBranches = async (branchesData) => {
-    console.log('StoryboardTest: handleGenerateBranches 被调用，数据:', branchesData);
+
 
     // 检查数据类型，支持更新现有节点和创建新节点
     if (branchesData.type === 'update_existing') {
       // 更新现有分镜节点的故事脚本
-      console.log('StoryboardTest: 更新现有分镜节点');
+
       await handleUpdateExistingFrames(branchesData);
       return;
     }
 
     // 创建新的分镜节点（原有逻辑）
     if (branchesData.type === 'create_new') {
-      console.log('StoryboardTest: 创建新的分镜节点');
+
       await handleCreateNewFrames(branchesData);
       return;
     }
 
     // 兼容旧版本调用方式
     if (Array.isArray(branchesData)) {
-      console.log('StoryboardTest: 兼容旧版本调用方式');
+
       await handleCreateNewFrames({ branches: branchesData });
       return;
     }
@@ -3749,7 +3753,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       }
     });
 
-    console.log('StoryboardTest: 现有分镜节点更新完成');
+
   };
 
   // 处理创建新的分镜节点
@@ -3857,52 +3861,208 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     globalLayoutTree();
   }, [selectedFrameId, storyData.length, storyData]);
 
-  // 模拟多份访谈记录数据
-  const interviewDataList = [
+  // 访谈案例数据（来源于 referce/测试案例.txt），每个案例含2条访谈
+  const interviewCases = [
     {
-      id: 1,
-      text: `张敏是一位35岁的银行客户经理，每天工作繁忙。她经常在下班后去超市采购食材，但总是面临时间紧张的问题。
-
-"当手机电量比我的耐心先耗尽时，任何精致菜谱都成了讽刺漫画。" 张敏这样描述她的烹饪应用使用体验。她希望能在超市现场快速找到适合的菜谱，但现有的应用推荐算法往往忽视了她实际的时间和库存限制。
-
-在通勤后的超市采购时段（18:30-19:30），她经常单手持手机同时推购物车，处于分心状态。手机低电量警告让她感到焦虑，她潜意识里还在计算明日早餐的准备时间。
-
-张敏对效率流失存在放大镜效应，会为节省2分钟额外支付10元钱。她对进度条和倒计时产生条件反射焦虑，在工具失效时会立即启动备选方案。她将饮食管理视为家庭责任延伸，用工具选择缓解育儿愧疚感。
-
-她常用"至少""起码"等底线思维词汇，倾向量化表达（"15分钟""3种食材"），抱怨时夹杂自嘲式幽默，对营销话术异常敏感。`,
-      keywords: []
+      title: '案例一 送礼物',
+      interviews: [
+        {
+          id: 'gift-A',
+          title: '访谈对象 A：小林（28 岁，程序员）',
+          date: '',
+          userInfo: {
+            name: '小林',
+            age: '28岁',
+            occupation: '程序员',
+            background: '白领，有稳定工作，有一定经济基础',
+            relationship: '有女朋友，处于恋爱关系',
+            personality: '细心、在意女友感受、容易焦虑、追求完美'
+          },
+          text: `研究员：能不能和我讲讲你最近一次买礼物的经历？
+小林：有啊，就上个月我女朋友生日。我提前一周就在想要送什么，但真的挺纠结的。因为她平时对礼物的期待比较高，喜欢有创意或者带点特别意义的东西。像首饰、包包这些常见的礼物她都有了，我觉得如果再送，可能就太普通了。
+研究员：你当时是怎么开始挑选的？
+小林：最开始就是到处搜灵感。先问了几个朋友，但大家的建议都差不多：香水、手链、护肤品。但我觉得这太“标准答案”了，不够有惊喜感。然后我就刷小红书、知乎，看了很多“送女友必看清单”，信息真的特别多，有什么投影仪、智能小家电、定制化相册、甚至是情侣游戏……但是看到后来我就更犹豫了，因为每样看起来都挺不错的，但我没法判断她会不会真的喜欢。
+研究员：在这个过程中你的感受是什么？
+小林：其实挺焦虑的。我一边担心送得不合适显得不走心，一边又怕挑太久来不及买。她生日那天我们还约了朋友聚餐，所以我很想送一个能让她当场眼前一亮的礼物。我记得那几天每天上下班路上都在想这个问题，甚至晚上也会躺在床上刷各种礼物推荐帖子。
+研究员：最后你是怎么决定的？
+小林：说实话有点仓促。我犹豫到最后两天才下单，选了一个设计感比较特别的银手链。其实买的时候我心里没底，只是觉得这是最稳妥的选择。她当时戴上确实挺开心的，但我能感觉到她的惊喜没那么强烈。我自己也觉得差点意思，好像错过了一个更有纪念意义的机会。
+研究员：如果有一个工具能帮你，你希望它提供什么？
+小林：我希望它能结合对方的兴趣爱好，甚至是她平时说过的细节，比如最近喜欢看什么电影、有没有提过想尝试什么爱好。然后帮我推荐一些相关的礼物，并解释为什么合适——比如“因为她喜欢 XX，这个礼物能让她在某种场景下用到”。如果还能模拟出她可能的反应就更好了，这样我心里会更踏实，不会觉得只是瞎猜。`
+        },
+        {
+          id: 'gift-B',
+          title: '访谈对象 B：小吴（26 岁，研究生）',
+          date: '',
+          userInfo: {
+            name: '小吴',
+            age: '26岁',
+            occupation: '研究生',
+            background: '在读研究生，经济条件一般',
+            relationship: '与室友关系密切，即将分别',
+            personality: '重情重义、注重情感价值、追求个性化、容易焦虑'
+          },
+          text: `研究员：你最近有没有送礼物的经历？
+小吴：有的。我室友不久前要去国外读博，我就想送点纪念品。我想让她带着的时候能想到我们，但挑礼物真的挺难的。
+研究员：你是怎么开始的？
+小吴：我先在淘宝上搜“出国礼物”，结果出来的基本都是旅行用品，像行李箱、转换插头、U 型枕。我觉得这些东西确实有用，但感觉太实用、缺乏情感价值，好像谁都能送。我想找点更特别的，就去逛了几家实体礼品店，但看到的不是水杯就是小饰品，感觉没啥新意。后来甚至去看了定制礼物网站，有水晶摆件、刻字钢笔之类的，但又觉得太“套路”，缺少个人化。
+研究员：听起来你很在意礼物能传达情感？
+小吴：对，因为这是一个很重要的节点，我希望她拿到礼物的时候能觉得“这是专门为我准备的”。但我一个人想不出来，越想越焦虑。我还反复问自己：会不会买了她根本不会用，最后扔在角落里？
+研究员：那你最后选择了什么？
+小吴：最后我还是做了一个相册，把我们一起的照片洗出来，配上文字说明。这个办法虽然传统，但至少能表达感情，而且不会出错。她收到的时候很感动，但我自己还是觉得有点遗憾，觉得要是有个更有创意、同时也能带走的礼物会更好。
+研究员：你觉得整个过程中最难的地方是哪里？
+小吴：最难的是“匹配”。我希望礼物能同时满足三个条件：她喜欢、能体现心意、有实际意义。但现实中几乎很难找到完全符合的。所以我经常处在“怕太普通”和“怕太冒险”的两难里。
+研究员：如果有工具帮你挑选呢？
+小吴：我希望它能把对方的性格、爱好、我们之间的关系都考虑进去，然后生成几种不同角度的建议——比如一个偏实用的，一个偏情感的，一个偏创意的。最好还能告诉我，如果送这个，可能的优点和风险是什么，这样我就能更有把握做决定了。`
+        }
+      ]
     },
     {
-      id: 2,
-      text: `李华是一名28岁的IT工程师，单身，经常加班到深夜。他对于烹饪应用的需求主要集中在简单易做的快手菜。
-
-"我需要的不是米其林三星的复杂菜谱，而是能在15分钟内搞定的营养餐。" 李华表示，他更关注食材的营养搭配和制作效率。
-
-作为一个理性的用户，李华会仔细研究每个菜谱的营养成分和制作时间。他希望应用能够根据他现有的食材智能推荐菜谱，避免频繁购买新食材的麻烦。
-
-李华对于应用的界面设计很敏感，他不喜欢过于花哨的设计，更偏向简洁实用的界面。他经常在深夜使用应用，因此对暗色模式有强烈需求。
-
-他习惯用数据说话，会记录每道菜的制作时间和满意度，并根据这些数据调整自己的菜谱选择。`,
-      keywords: []
+      title: '案例二 失眠',
+      interviews: [
+        {
+          id: 'insomnia-A',
+          title: '访谈对象 A：李倩（29 岁，互联网产品经理）',
+          date: '',
+          userInfo: {
+            name: '李倩',
+            age: '29岁',
+            occupation: '互联网产品经理',
+            background: '互联网行业从业者，工作压力大',
+            relationship: '单身，主要社交圈在工作',
+            personality: '工作认真负责、容易焦虑、追求完美、自我要求高'
+          },
+          text: `研究员：你最近的睡眠情况怎么样？能和我讲讲吗？
+李倩：说实话挺糟糕的。我差不多一周有三四天晚上都很难入睡，经常躺下后翻来覆去，一个小时两个小时都睡不着。最严重的一次我到凌晨四点还睁着眼。那时候脑子里特别乱，停不下来。
+研究员：你觉得这种失眠的原因主要是什么？
+李倩：工作压力吧。我做产品的，白天开会、看数据，脑子一直紧绷着。到了晚上，虽然人累得不行，但脑子突然开始回放白天的事情，想用户投诉、想上线进度、想老板的意见。就像电影回放一样，越想越焦虑。
+研究员：那你一般会怎么应对？
+李倩：最常见的是拿起手机刷短视频，想着让自己分心，但效果不好，看着看着就更精神。也买过助眠喷雾、褪黑素，偶尔能缓解，但没法长期用。朋友让我试冥想或瑜伽，我也下过App，可是每次跟着练到一半又忍不住去看消息，静不下来。
+研究员：在失眠时，你的情绪通常是怎样的？
+李倩：很焦躁，尤其是看到时间一点点过去的时候。比如已经两点了，我会算“还剩五个小时就要起床了”，这种倒计时让我更紧张。有时候还会自责，觉得是不是自己太脆弱了，别人都能睡，我为什么不行。那种无力感特别强。
+研究员：你理想中想要的是什么样的帮助？
+李倩：我希望有一个方式能帮我停下脑子里的念头，或者有人能安慰我，说“你已经做得够多了，可以放心休息”。最好能根据我当下的状态来调整，比如今天是因为工作焦虑，就引导我慢慢放下这些想法；如果是心情低落，就能给我一些积极的情绪暗示。`
+        },
+        {
+          id: 'insomnia-B',
+          title: '访谈对象 B：赵宇（31 岁，博士生）',
+          date: '',
+          userInfo: {
+            name: '赵宇',
+            age: '31岁',
+            occupation: '博士生',
+            background: '在读博士生，学术压力大',
+            relationship: '主要社交圈在学术圈',
+            personality: '学术严谨、压力承受能力强、容易过度思考、追求学术成就'
+          },
+          text: `研究员：你平时的睡眠情况怎么样？
+赵宇：挺差的。我读博这几年基本一直失眠，尤其是快到答辩或者要发论文的节点，压力特别大。有时候凌晨三点还在床上辗转反侧，整个人状态特别差。
+研究员：在你失眠的时候，你一般会做什么？
+赵宇：一开始我会强迫自己闭眼，但没用。后来就习惯性拿起手机刷论坛，看学术八卦，想着放松一下，结果越看越精神。有时候会干脆坐起来继续改论文，想着干脆利用这段清醒的时间。可是第二天特别崩溃，精神恍惚，效率更低。
+研究员：你觉得失眠最痛苦的部分是什么？
+赵宇：不是说单纯睡不着，而是你在和自己的大脑打仗。身体明明很累，但脑子里一直在想公式、研究问题，停不下来。我经常在心里跟自己对话：“快睡吧，不然明天没精神”，但就是没用。这种矛盾感特别折磨人。
+研究员：你有用过什么方法吗？
+赵宇：用过白噪音App、助眠眼罩，也试过深呼吸和冥想。前几天可能有效，但很快就失效了。就像对症下药但没治根本。失眠的核心还是焦虑，单纯的工具没法从根源帮我缓解。
+研究员：如果有一个工具能帮你，你希望它具备什么功能？
+赵宇：我希望它能“理解”我，而不是只是放点音乐、播点声音。比如它能先让我把焦虑的想法说出来，然后帮我分类、引导，让我看到“这些事其实没那么严重”。或者它能模拟一个支持性的对话，像朋友一样陪伴我，告诉我“没关系，先休息，明天再处理”。这种带有人性化互动的方式，比冷冰冰的提示更能让我放松。`
+        }
+      ]
     },
     {
-      id: 3,
-      text: `王芳是一位32岁的全职妈妈，有两个孩子，日常需要为全家准备三餐。她对烹饪应用的需求更多样化，既要考虑营养搭配，也要照顾家人的口味偏好。
-
-"孩子们挑食，老公又想减肥，我自己还要控制血糖，一顿饭要满足这么多需求真的很头疼。" 王芳希望应用能够提供个性化的家庭菜谱推荐。
-
-她经常在菜市场使用应用，需要根据当天的新鲜食材临时调整菜谱。王芳很看重其他用户的评价和心得分享，她认为这比专业厨师的建议更实用。
-
-王芳喜欢在应用中记录家人对每道菜的反馈，并希望应用能够学习这些偏好，逐渐优化推荐内容。她也经常在妈妈群里分享好用的菜谱，社交功能对她很重要。
-
-时间管理对王芳来说是个挑战，她希望能够提前规划一周的菜谱，并自动生成购物清单。`,
-      keywords: []
+      title: '案例三 烹饪',
+      interviews: [
+        {
+          id: 'cook-A',
+          title: '访谈对象 A：小李（28 岁，白领）',
+          date: '',
+          userInfo: {
+            name: '小李',
+            age: '28岁',
+            occupation: '白领',
+            background: '上班族，工作繁忙，下班时间晚',
+            relationship: '单身，独居',
+            personality: '注重健康、有规划意识、容易受挫、追求效率'
+          },
+          text: `研究员：你平时会自己做饭吗？能大概说说频率吗？
+小李：会的，但说实话不太稳定。大概一周能做两三次吧。因为下班比较晚，常常七点多才到家，就不太有精力做复杂的菜。一般就是炒点青菜、煎个鸡蛋，或者干脆煮个面应付一下。
+研究员：那你为什么会选择自己做饭，而不是每天点外卖？
+小李：主要还是出于健康考虑吧。去年体检的时候，医生提醒我血脂有点高。外卖太油太咸，而且总吃快餐也容易长胖。我就想着，还是要自己动手做，至少油盐能控制一点。另外也想省钱，天天点外卖挺贵的。
+研究员：在做饭的过程中，你觉得最大的挑战是什么？
+小李：挺多的。首先是手艺不行（笑），我没受过系统的烹饪训练，所以常常掌握不好火候，炒菜不是太咸就是太淡。尤其是一些稍微复杂的菜，我照着网上食谱做，但步骤很多，中间一出错就全乱了。还有就是备菜特别麻烦，切菜、洗菜花掉一大堆时间，搞得我一顿饭可能要准备一小时，吃十几分钟，感觉不值。
+研究员：你平时是怎么安排买菜和做饭的？
+小李：一般是周末去趟超市，买一堆蔬菜和肉，打算一周慢慢做。但问题是常常吃不完，冰箱里放几天就坏了。特别是绿叶菜，很容易黄掉，最后只能扔掉，觉得很浪费。于是有时候我就懒得买太多，但这样一来，平日里想做的时候又缺食材。
+研究员：遇到这些情况，你会有什么感受？
+小李：坦白说挺挫败的。我一开始是抱着健康饮食的期待去做饭的，结果却变成一件又费时又费力的事情，还经常浪费食材，做出来的味道也一般。久而久之就有点坚持不下去。甚至有时候会怀疑“我是不是不适合做饭”。
+研究员：那你理想中希望的做饭体验是怎样的？
+小李：我希望能更简单一些。比如有人能帮我规划好这一周该吃什么，告诉我需要准备哪些菜，步骤最好是简洁直观的。我只要跟着走就行，而不用自己费劲琢磨怎么搭配。还有，如果能保证营养均衡、味道过得去，那就更好了。`
+        },
+        {
+          id: 'cook-B',
+          title: '访谈对象 B：小王（24 岁，研究生）',
+          date: '',
+          userInfo: {
+            name: '小王',
+            age: '24岁',
+            occupation: '研究生',
+            background: '在读研究生，时间不规律',
+            relationship: '与同学合租',
+            personality: '经济意识强、注重健康、时间管理困难、追求简单实用'
+          },
+          text: `研究员：你平时的做饭习惯是怎样的？
+小王：我做饭比较随意，没有固定频率。有时候一周能做三四次，但一旦课题忙起来，就直接一周全靠外卖。主要是看有没有时间和精力。
+研究员：你为什么会选择做饭？动机是什么？
+小王：两个原因吧。第一是省钱，点外卖真的太贵了，一个月算下来很吓人。第二是健康问题。我胃口不太好，外卖很多都重油重盐，有时候吃了还会胃不舒服。自己做饭的话至少能控制调料的量。
+研究员：那在做饭过程中，你最常遇到的困难是什么？
+小王：我觉得最大的问题是“买什么”和“做什么”。去超市的时候经常站在货架前发呆，不知道要买什么能搭配起来。最后往往就买鸡蛋、番茄、土豆这种最常见的，结果一周下来饮食特别单一。还有就是买多了又吃不完，冰箱里经常剩下一堆过期的食材。其次是时间问题，下课回来已经七八点了，还要洗菜、切菜、炒菜，吃完还得收拾厨房，往往搞到九点多才能休息。时间太紧张。
+研究员：这些情况让你有什么感受？
+小王：会有点焦虑和挫败吧。明明是想让生活更健康一点，结果反而觉得更累更繁琐。特别是忙的时候，一想到做饭就觉得压力大。久而久之，我就会放弃，直接点外卖。
+研究员：那你理想中的做饭体验是什么？
+小王：我希望能有一个简单的计划，比如告诉我这一周该吃什么，每天准备哪些食材，甚至能帮我算好营养搭配。做法最好能简化，哪怕只是“十分钟快手菜”，让我在有限的时间里也能快速完成。这样我就不用花太多脑力在“思考”和“准备”上。`
+        }
+      ]
+    },
+    {
+      title: '案例四 健身',
+      interviews: [
+        {
+          id: 'fitness-A',
+          title: '访谈对象 A：小陈（27 岁，互联网产品经理）',
+          date: '',
+          text: `研究员：我知道你平时挺忙的，那你一般会怎么安排运动？
+小陈：对，我经常加班，其实运动的时间挺少的。大概一周能抽出两次吧，基本上就是晚上九点以后去健身房。主要就是跑步机上跑一会儿，再做些器械练习。
+研究员：你觉得健身房的体验对你来说怎么样？
+小陈：有好有坏吧。好处是器械比较全，我不用自己琢磨太多。但问题是人太多了，晚上去经常需要排队等设备，等着等着就很浪费时间。等到轮到我的时候，已经没什么精力了。
+研究员：那你在健身的时候会有什么困扰？
+小陈：我觉得最难的是坚持。比如我一开始很有动力，想要减脂、增肌，但过了一个月就容易松懈。主要是我不太清楚我的训练有没有效果，有时候练了一阵子，照镜子也没啥变化，就很打击积极性。另外我也不太懂如何安排训练，比如今天应该练什么肌群，要做几组，我常常就是随便跟着别人的动作做。
+研究员：这种情况下你的感受是什么？
+小陈：挺焦虑的。我明知道运动对健康有好处，但每次都感觉自己在瞎练，时间花了却没效果。然后心里会有点自责，觉得坚持不下来是自己意志力差。
+研究员：那你觉得什么样的方式能帮助你更好地坚持？
+小陈：我希望有人能帮我制定一个合适的计划，告诉我每天该练什么，怎么做，最好还能给我一些即时反馈，比如我的动作对不对，有没有进步。这样我就不会老是怀疑自己，也更有动力去坚持。`
+        },
+        {
+          id: 'fitness-B',
+          title: '访谈对象 B：小赵（27 岁，研究生，平时主要在家学习）',
+          date: '',
+          text: `研究员：你平时会在家运动吗？
+小赵：会的，尤其是疫情之后习惯了在家锻炼。一般就是跟着视频做一些 HIIT，或者用哑铃练手臂。不过老实说，能坚持的时间不太长，差不多一周两三次吧。
+研究员：那你在家运动的过程中，会遇到什么困难？
+小赵：挺多的。第一个是环境限制，我租的房子比较小，客厅地方不大，动作很受限。第二个是缺少指导，我跟着视频做，但不知道动作标准不标准，有时候膝盖疼，不知道是不是姿势不对。第三个是动力不足，毕竟在家里太容易分心了，练着练着就去看手机或者干别的了。
+研究员：那你是怎么克服这些问题的呢？
+小赵：大多数时候就是靠自己逼自己坚持。但效果一般。我也试过下健身 App，它会给一些课程推荐和打卡功能，但感觉挺模板化的，没法针对我个人的身体状况调整，所以用了一阵子就放弃了。
+研究员：那你对运动的期待或者目标是什么？
+小赵：主要是改善身体状态吧。我经常熬夜写论文，身体素质下降得很快，腰酸背痛，想通过锻炼增强体质。另外也希望体型能好看一点，但对我来说健康更重要。
+研究员：如果有一个工具能帮你提升体验，你希望它能做到什么？
+小赵：我希望它能更个性化一点，比如根据我的体能和时间来推荐合适的训练方案，还能实时提醒动作有没有问题。最好还能帮我看到阶段性的成果，比如肌肉量增加了多少，心肺功能有没有提升。这样我就会觉得自己的努力是有价值的。`
+        }
+      ]
     }
   ];
 
-  // 当前选中的访谈记录
+  // 当前选中的访谈案例/记录
+  const [currentCaseIndex, setCurrentCaseIndex] = useState(0);
   const [currentInterviewIndex, setCurrentInterviewIndex] = useState(0);
-  const currentInterview = interviewDataList[currentInterviewIndex];
+  const currentCase = interviewCases[currentCaseIndex] || { title: '', interviews: [] };
+    const currentInterview = currentCase.interviews[currentInterviewIndex] || { text: '', title: '', date: '' };
+  
 
   // 切换访谈记录时保持关键词，不重置
   useEffect(() => {
@@ -4141,6 +4301,14 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     setDragHighlightRects([]);
   };
 
+  // 处理用户身份信息选择 - 简化为直接添加
+  const handleUserInfoSelect = (e, text, typeId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // 为卡片信息添加特殊标记，避免影响对话内容的高亮
+    addKeyword(text, typeId, true);
+  };
+
   // 取消关键词选择
   const cancelKeywordSelection = () => {
     setKeywordSelector({ show: false, text: '', position: null });
@@ -4148,21 +4316,21 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   };
 
   // 添加关键词
-  const addKeyword = (text, typeId) => {
+  const addKeyword = (text, typeId, isCardInfo = false) => {
     const newKeyword = {
       id: Date.now(),
       text: text,
       type: typeId,
       timestamp: new Date().toISOString(),
-      // 添加位置信息用于文本高亮
-      startIndex: currentInterview.text.indexOf(text),
-      endIndex: currentInterview.text.indexOf(text) + text.length
+      startIndex: isCardInfo ? -1 : currentInterview.text.indexOf(text), // 卡片信息使用-1表示不影响对话内容
+      endIndex: isCardInfo ? -1 : currentInterview.text.indexOf(text) + text.length,
+      isCardInfo: isCardInfo // 标记是否为卡片信息
     };
     const updatedKeywords = [...selectedKeywords, newKeyword];
     setSelectedKeywords(updatedKeywords);
 
     // 同时更新到当前访谈记录中
-    const updatedInterviewList = [...interviewDataList];
+    const updatedInterviewList = [...currentCase.interviews];
     updatedInterviewList[currentInterviewIndex].keywords = updatedKeywords;
     // 这里可以添加保存到本地存储或发送到服务器的逻辑
   };
@@ -4244,15 +4412,18 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   // 渲染带有高亮的文本
   const renderHighlightedText = (text, keywords) => {
     if (!keywords || keywords.length === 0) {
-      return text.split('\n').map((paragraph, index) => (
-        <p key={index} className="mb-4">
-          {paragraph}
-        </p>
-      ));
+      return renderDialogText(text);
+    }
+
+    // 过滤掉卡片信息关键词，只保留影响对话内容的关键词
+    const contentKeywords = keywords.filter(keyword => !keyword.isCardInfo);
+    
+    if (contentKeywords.length === 0) {
+      return renderDialogText(text);
     }
 
     // 按位置排序关键词，确保按顺序渲染
-    const sortedKeywords = [...keywords].sort((a, b) => a.startIndex - b.startIndex);
+    const sortedKeywords = [...contentKeywords].sort((a, b) => a.startIndex - b.startIndex);
     
     // 创建段落数组
     const paragraphs = text.split('\n');
@@ -4268,7 +4439,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       );
       
       if (paragraphKeywords.length === 0) {
-        return <p key={paragraphIndex} className="mb-4">{paragraph}</p>;
+        return renderDialogText(paragraph, paragraphIndex);
       }
       
       // 渲染带有高亮的段落
@@ -4276,8 +4447,123 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     });
   };
 
+  // 渲染对话文本，为不同角色添加不同样式
+  const renderDialogText = (text, index = 0) => {
+    // 如果是多行文本，逐行处理
+    if (typeof text === 'string' && text.includes('\n')) {
+      return text.split('\n').map((line, lineIndex) => 
+        renderDialogText(line, `${index}-${lineIndex}`)
+      );
+    }
+    
+    // 检查是否是对话格式（包含冒号）
+    if (text.includes('：')) {
+      const [speaker, content] = text.split('：', 2);
+      const isResearcher = speaker.includes('研究员');
+      
+      // 处理重复的说话人名字
+      const cleanSpeaker = speaker.replace(/^研究员：/, '研究员').replace(/^([^：]+)：\1：/, '$1：');
+      
+      return (
+        <div key={index} className={`mb-2 ${isResearcher ? 'mb-3' : 'mb-2'}`}>
+          <span className={`inline-block font-medium ${isResearcher ? 'text-gray-500' : 'text-blue-600'}`}>
+            {cleanSpeaker}：
+          </span>
+          <span className="text-gray-800">{content}</span>
+        </div>
+      );
+    }
+    
+    // 如果不是对话格式，直接返回
+    return <p key={index} className="mb-2">{text}</p>;
+  };
+
   // 渲染带有高亮的段落
   const renderHighlightedParagraph = (paragraph, keywords, paragraphStartIndex, paragraphIndex) => {
+    // 检查是否是对话格式，如果是，需要特殊处理说话人名称
+    let isDialog = false;
+    let speaker = '';
+    let content = '';
+    let speakerEndIndex = 0;
+    
+    if (paragraph.includes('：')) {
+      isDialog = true;
+      speakerEndIndex = paragraph.indexOf('：') + 1;
+      speaker = paragraph.slice(0, speakerEndIndex);
+      content = paragraph.slice(speakerEndIndex);
+      
+      // 为说话人名称创建独立的span，确保不受关键词高亮影响
+      const isResearcher = speaker.includes('研究员');
+      const speakerSpan = (
+        <span key={`speaker-${paragraphIndex}`} className={`inline-block font-medium ${isResearcher ? 'text-blue-600' : 'text-green-600'}`}>
+          {speaker}
+        </span>
+      );
+      
+      // 处理内容部分的关键词高亮
+      const contentResult = [];
+      let currentIndex = speakerEndIndex;
+      
+      // 过滤并排序关键词，确保只处理内容部分
+      const contentKeywords = keywords
+        .map(keyword => ({
+          ...keyword,
+          relativeStart: Math.max(0, keyword.startIndex - paragraphStartIndex),
+          relativeEnd: Math.min(paragraph.length, keyword.endIndex - paragraphStartIndex)
+        }))
+        .filter(keyword => keyword.relativeStart >= speakerEndIndex) // 只处理内容部分的关键词
+        .sort((a, b) => a.relativeStart - b.relativeStart);
+      
+      contentKeywords.forEach((keyword, keywordIndex) => {
+        // 添加关键词前的普通文本
+        if (keyword.relativeStart > currentIndex) {
+          contentResult.push(
+            <span key={`text-${paragraphIndex}-${keywordIndex}`}>
+              {paragraph.slice(currentIndex, keyword.relativeStart)}
+            </span>
+          );
+        }
+        
+        // 添加高亮的关键词
+        const keywordText = paragraph.slice(keyword.relativeStart, keyword.relativeEnd);
+        const highlightColor = getHighlightColor(keyword.type);
+        
+        contentResult.push(
+          <span
+            key={`highlight-${paragraphIndex}-${keywordIndex}`}
+            className={`${highlightColor} px-1 rounded`}
+            title={`${keyword.type === 'elements' ? '元素' : 
+                     keyword.type === 'user_traits' ? '用户特征' : 
+                     keyword.type === 'pain_points' ? '痛点' : 
+                     keyword.type === 'goals' ? '目标' : 
+                     keyword.type === 'emotions' ? '情绪' : '关键词'}: ${keywordText}`}
+          >
+            {keywordText}
+          </span>
+        );
+        
+        currentIndex = keyword.relativeEnd;
+      });
+      
+      // 添加关键词后的普通文本
+      if (currentIndex < paragraph.length) {
+        contentResult.push(
+          <span key={`text-${paragraphIndex}-end`}>
+            {paragraph.slice(currentIndex)}
+          </span>
+        );
+      }
+      
+      // 返回包含说话人名称和内容的完整段落
+      return (
+        <div key={paragraphIndex} className={`mb-2 ${isResearcher ? 'mb-3' : 'mb-2'}`}>
+          {speakerSpan}
+          {contentResult}
+        </div>
+      );
+    }
+    
+    // 非对话格式的处理
     const result = [];
     let currentIndex = 0;
     
@@ -4328,7 +4614,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       );
     }
     
-    return <p key={paragraphIndex} className="mb-4">{result}</p>;
+    return <p key={paragraphIndex} className="mb-2">{result}</p>;
   };
 
   // 获取高亮颜色
@@ -4355,7 +4641,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     setSelectedKeywords(updatedKeywords);
 
     // 同时更新到当前访谈记录中
-    const updatedInterviewList = [...interviewDataList];
+    const updatedInterviewList = [...currentCase.interviews];
     updatedInterviewList[currentInterviewIndex].keywords = updatedKeywords;
     // 这里可以添加保存到本地存储或发送到服务器的逻辑
   };
@@ -4373,22 +4659,24 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       
       // 准备数据：将前端数据转换为API所需的格式
       const interviewData = {
-        interview_text: currentInterview,
+        interview_text: currentInterview.text,
+        user_info: currentInterview.userInfo || {},
         selected_bubbles: {
           persona: selectedKeywords.filter(k => k.type === 'user_traits').map(k => k.text),
           context: selectedKeywords.filter(k => k.type === 'elements').map(k => k.text),
           goal: selectedKeywords.filter(k => k.type === 'goals').map(k => k.text),
           pain: selectedKeywords.filter(k => k.type === 'pain_points').map(k => k.text),
-          emotion: selectedKeywords.filter(k => k.type === 'emotions').map(k => k.text)
+          emotion: selectedKeywords.filter(k => k.type === 'emotions').map(k => k.text),
+          identity: []
         }
       };
       
-      console.log('📤 准备发送到Coze API的数据:', interviewData);
+
       
       // 调用新的用户画像生成服务
       const result = await generatePersona(interviewData);
       
-      console.log('🎯 Coze API返回结果:', result);
+
       
       if (result.personas && result.personas.length > 0) {
         // 转换API返回的数据格式为前端使用的格式
@@ -4439,7 +4727,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
           setSelectedKeywords(prev => [...prev, ...newBubbles]);
         }
         
-        console.log('✅ 用户画像生成成功:', convertedPersonas);
+
       } else {
         console.warn('⚠️ API返回的用户画像数据为空');
         // 生成默认画像
@@ -4515,7 +4803,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   // 处理故事选择
   const handleStorySelect = async (selectedStory) => {
     try {
-      console.log('🎯 用户选择了故事:', selectedStory);
+
       
       // 显示加载状态
       setCurrentStep('loading');
@@ -4524,7 +4812,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       const { generateStoryFrames } = await import('../services/storyToFramesService');
       const framesData = await generateStoryFrames(selectedStory);
       
-      console.log('✅ 成功生成分镜节点数据:', framesData);
+
       
       if (framesData.story_beats && framesData.story_beats.length > 0) {
         // 基于生成的分镜节点创建故事模型
@@ -4547,7 +4835,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
         // 使用新的递归布局算法
         setTimeout(() => globalLayoutTree(), 100);
         
-        console.log('🎉 成功创建分镜节点并跳转到画布界面');
+
       } else {
         throw new Error('未获取到有效的分镜节点数据');
       }
@@ -4556,7 +4844,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       console.error('❌ 生成分镜节点失败:', error);
       
       // 如果失败，回退到原来的逻辑
-      console.log('⚠️ 回退到原来的单节点逻辑');
+
       setStory(selectedStory.content);
       const initialStoryModel = generateInitialFrames({
         storyScript: selectedStory.content,
@@ -4592,7 +4880,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
 
   // 根据分镜节点数据创建故事模型
   const createStoryModelFromFrames = (storyBeats, selectedStory) => {
-    console.log('🎬 开始根据分镜节点创建故事模型:', storyBeats);
+
     
     // 计算画布中心位置（考虑左侧边栏宽度）
     const sidebarWidth = 288; // 左侧边栏宽度 (w-72 = 288px)
@@ -4663,7 +4951,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       }
     }
     
-    console.log('✅ 成功创建故事模型:', { nodes, branches });
+
     return { nodes, branches };
   };
 
@@ -4727,13 +5015,14 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   // 处理分镜选择
   const handleFrameSelect = (frameId) => {
     setSelectedFrameId(frameId);
+    setTimeout(() => globalLayoutTree(), 0);
   };
 
 
 
   // 处理拖拽排序 - 使用新的树状数据结构
   const handleFrameReorder = (draggedNodeId, insertIndex) => {
-    console.log('🔧 handleFrameReorder 被调用:', { draggedNodeId, insertIndex });
+
     
     // 获取拖拽的节点
     const draggedNode = getNodeById(draggedNodeId);
@@ -4785,7 +5074,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       }
     });
     
-    console.log('🔧 节点排序完成，新顺序:', newNodeIds);
+
     
     // 重新排布节点位置
     setTimeout(() => {
@@ -4810,7 +5099,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
 
   // 处理节点移动 - 使用新的树状数据结构
   const handleMoveNode = (nodeId, direction) => {
-    console.log('🔧 handleMoveNode 被调用:', { nodeId, direction });
+
     
     // 获取要移动的节点
     const nodeToMove = getNodeById(nodeId);
@@ -4821,7 +5110,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
 
     // 检查是否是情景探索节点，如果是则不允许移动
     if (nodeToMove.type === NODE_TYPES.EXPLORATION || nodeToMove.explorationData?.isExplorationNode) {
-      console.log('⚠️ 情景探索节点不允许移动:', nodeId);
+
       return;
     }
 
@@ -4846,7 +5135,6 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       } else if (direction === 'right' && currentIndex < branch.nodeIds.length - 1) {
         newIndex = currentIndex + 1;
       } else {
-        console.log('⚠️ 无法移动: 已经是边界位置');
         return; // 无法移动
       }
 
@@ -4872,10 +5160,10 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
         updateNode(targetNode.id, { nodeIndex: newIndex });
       }
 
-      console.log('🔧 分支内节点移动完成:', { from: currentIndex, to: newIndex });
+
     } else {
       // 如果节点没有branchId，在主线上移动
-      console.log('🔧 在主线上移动节点:', nodeId);
+
       
       // 获取所有主线节点（没有branchId的节点）
       const mainLineNodes = storyData.filter(node => !node.branchId);
@@ -4892,7 +5180,6 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       } else if (direction === 'right' && currentIndex < mainLineNodes.length - 1) {
         newIndex = currentIndex + 1;
       } else {
-        console.log('⚠️ 无法移动: 已经是边界位置');
         return; // 无法移动
       }
 
@@ -4903,7 +5190,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       if (currentNode && targetNode) {
         updateNode(currentNode.id, { nodeIndex: newIndex });
         updateNode(targetNode.id, { nodeIndex: currentIndex });
-        console.log('🔧 主线节点移动完成:', { from: currentIndex, to: newIndex });
+
       }
     }
 
@@ -4916,7 +5203,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
 
   // 处理节点删除 - 使用新的树状数据结构
   const handleDeleteNode = (nodeId) => {
-    console.log('🔧 handleDeleteNode 被调用，节点ID:', nodeId);
+
     
     // 获取要删除的节点
     const nodeToDelete = getNodeById(nodeId);
@@ -4970,8 +5257,8 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   };
 
   // 处理节点状态变化 - 使用新的树状数据结构
-  const handleNodeStateChange = (nodeId, newState) => {
-    console.log('🔧 handleNodeStateChange 被调用:', { nodeId, newState });
+  const handleNodeStateChange = (nodeId, newState, isExpanded) => {
+    console.log('节点状态变化:', nodeId, newState, 'isExpanded:', isExpanded);
     
     // 更新节点数据
     updateNode(nodeId, { state: newState });
@@ -4981,9 +5268,10 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     const currentNode = getNodeById ? getNodeById(nodeId) : null;
     const hasImage = currentNode && currentNode.image;
     
-    let isExpanded;
     let finalState = newState;
     
+    // 如果没有传递isExpanded参数，则根据状态推断
+    if (isExpanded === undefined) {
     if (newState === 'expanded' || newState === 'editing' || newState === 'generating') {
       isExpanded = true;
     } else if (newState === 'collapsed' && hasImage) {
@@ -4994,16 +5282,10 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       updateNode(nodeId, { state: 'collapsedWithImage' });
     } else {
       isExpanded = false;
+      }
     }
     
-    console.log('🔧 状态变化处理:', {
-      nodeId,
-      originalState: newState,
-      finalState,
-      hasImage,
-      isExpanded
-    });
-    
+    // 调用布局引擎的状态更新函数
     updateNodeState(nodeId, finalState, isExpanded);
   };
 
@@ -5041,10 +5323,19 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
             用户访谈记录
           </h2>
           <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 text-sm text-gray-600">
-              <Highlighter className="w-4 h-4" />
-              <span>圈选关键词</span>
+            {/* 案例选择器 */}
+            <div className="flex items-center space-x-2">
+              <select
+                value={currentCaseIndex}
+                onChange={(e) => { setCurrentCaseIndex(parseInt(e.target.value, 10)); setCurrentInterviewIndex(0); }}
+                className="px-2 py-1 text-sm border border-gray-300 rounded-md"
+              >
+                {interviewCases.map((c, idx) => (
+                  <option key={c.title} value={idx}>{c.title.replace(/^案例[一二三四五六七八九十]+ /, '')}</option>
+                ))}
+              </select>
             </div>
+            {/* 访谈切换 */}
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => setCurrentInterviewIndex(Math.max(0, currentInterviewIndex - 1))}
@@ -5054,11 +5345,11 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
                 <ChevronDown className="w-4 h-4 rotate-90" />
               </button>
               <span className="text-sm text-gray-600">
-                {currentInterviewIndex + 1} / {interviewDataList.length}
+                {currentInterviewIndex + 1} / {currentCase.interviews.length}
               </span>
               <button
-                onClick={() => setCurrentInterviewIndex(Math.min(interviewDataList.length - 1, currentInterviewIndex + 1))}
-                disabled={currentInterviewIndex === interviewDataList.length - 1}
+                onClick={() => setCurrentInterviewIndex(Math.min((currentCase.interviews.length - 1), currentInterviewIndex + 1))}
+                disabled={currentInterviewIndex === (currentCase.interviews.length - 1)}
                 className="p-1 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ChevronDown className="w-4 h-4 -rotate-90" />
@@ -5069,8 +5360,10 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
 
 
 
+
+
         {/* 访谈内容区域 - 可滚动 */}
-        <div className="flex-1 overflow-y-auto p-3">
+        <div className="flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300">
           <div
             ref={contentRef}
             className="prose relative max-w-none p-3 bg-gray-50 rounded-lg border border-gray-200 min-h-[350px] leading-relaxed text-gray-700 select-text"
@@ -5088,6 +5381,34 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
                 />
               ))}
             </div>
+            {/* 用户身份信息 - 显示在访谈内容开头 */}
+            {currentInterview.userInfo && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="text-sm text-blue-800 font-medium">
+                  <span 
+                    className="select-text cursor-pointer hover:bg-green-100 px-1 rounded" 
+                    onMouseDown={(e) => handleUserInfoSelect(e, currentInterview.userInfo.name, 'user_traits')}
+                  >
+                    {currentInterview.userInfo.name}
+                  </span>
+                  （
+                  <span 
+                    className="select-text cursor-pointer hover:bg-green-100 px-1 rounded" 
+                    onMouseDown={(e) => handleUserInfoSelect(e, currentInterview.userInfo.age, 'user_traits')}
+                  >
+                    {currentInterview.userInfo.age}
+                  </span>
+                  ，
+                  <span 
+                    className="select-text cursor-pointer hover:bg-green-100 px-1 rounded" 
+                    onMouseDown={(e) => handleUserInfoSelect(e, currentInterview.userInfo.occupation, 'user_traits')}
+                  >
+                    {currentInterview.userInfo.occupation}
+                  </span>
+                  ）
+                </div>
+              </div>
+            )}
             {renderHighlightedText(currentInterview.text, selectedKeywords)}
           </div>
 
@@ -5103,7 +5424,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
           <h3 className="text-lg font-semibold text-gray-800">提取的关键词</h3>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3">
+        <div className="flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300">
           <div className="space-y-4">
             {keywordTypes.map(type => {
               const typeKeywords = selectedKeywords.filter(k => k.type === type.id);
@@ -5171,7 +5492,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3">
+        <div className="flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300">
           {personas.length > 0 ? (
             <div className="space-y-4">
               {personas.map((persona, index) => (
@@ -5698,6 +6019,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
                     onDragStateUpdate={handleDragStateUpdate}
                     draggedNodeId={draggedNodeId}
                     dragTargetIndex={dragTargetIndex}
+                    onNodeStateChange={handleNodeStateChange}
                   />
                 </div>
               )}
@@ -5863,7 +6185,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
       )}
       {isInterviewModalOpen && (
         <InterviewViewerModal
-          interviews={interviewDataList}
+          interviews={currentCase.interviews}
           index={currentInterviewIndex}
           setIndex={setCurrentInterviewIndex}
           onClose={() => setIsInterviewModalOpen(false)}

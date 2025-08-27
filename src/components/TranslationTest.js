@@ -75,7 +75,7 @@ const TranslationTest = () => {
       
       <div className="mt-6">
         <h2 className="text-lg font-medium mb-2">日志:</h2>
-        <div className="p-3 bg-gray-50 border border-gray-200 rounded-md max-h-60 overflow-y-auto">
+        <div className="p-3 bg-gray-50 border border-gray-200 rounded-md max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300">
           {logs.length === 0 ? (
             <p className="text-gray-500">暂无日志</p>
           ) : (

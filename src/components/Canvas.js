@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Image, Frown, Meh, Smile, Lightbulb } from 'lucide-react';
 import { useLocale } from '../contexts/LocaleContext';
+import { getNodeDisplayWidth, getNodeHeight } from './layout/LayoutEngine';
 
 function Canvas({ storyData, storyModel, selectedFrameId, onFrameSelect }) {
   const t = useLocale();
@@ -76,8 +77,8 @@ function Canvas({ storyData, storyModel, selectedFrameId, onFrameSelect }) {
         const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         
         // 动态计算节点宽度和高度
-        const fromWidth = getNodeWidth(fromNode);
-        const toWidth = getNodeWidth(toNode);
+        const fromWidth = getNodeDisplayWidth(fromNode);
+        const toWidth = getNodeDisplayWidth(toNode);
         const fromHeight = getNodeHeight(fromNode);
         const toHeight = getNodeHeight(toNode);
         
@@ -123,8 +124,8 @@ function Canvas({ storyData, storyModel, selectedFrameId, onFrameSelect }) {
           const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
           
           // 动态计算节点宽度和高度
-                  const originWidth = getNodeWidth(originNode);
-        const firstBranchWidth = getNodeWidth(firstBranchNode);
+                  const originWidth = getNodeDisplayWidth(originNode);
+        const firstBranchWidth = getNodeDisplayWidth(firstBranchNode);
         const originHeight = getNodeHeight(originNode);
         const firstBranchHeight = getNodeHeight(firstBranchNode);
         
@@ -167,39 +168,6 @@ function Canvas({ storyData, storyModel, selectedFrameId, onFrameSelect }) {
         }
       }
     });
-  };
-
-  // 辅助函数：动态计算节点宽度
-  const getNodeWidth = (node) => {
-    if (!node) return 240;
-
-    // Exploration 节点按照面板开关返回真实显示宽度
-    if (node.type === 'exploration' || node.explorationData?.isExplorationNode) {
-      return node.showBubblesPanel ? 800 : 400;
-    }
-
-    // 普通分镜：展开时包含右侧面板宽度（132）
-    const isExpanded = node.state && node.state !== 'collapsed';
-    return isExpanded ? 360 + 132 : 240;
-  };
-
-  // 辅助函数：动态计算节点高度
-  const getNodeHeight = (node) => {
-    if (!node) return 200;
-    
-    // 优先使用真实测量的高度
-    if (node.actualHeight) {
-      return node.actualHeight;
-    }
-    
-    // 如果真实高度不存在，使用估算高度
-    if (node.state === 'image') {
-      return 280; // 图片状态较高
-    } else if (node.state && node.state !== 'collapsed') {
-      return 250; // 展开状态
-    }
-    
-    return 200; // 默认折叠状态
   };
 
   const initCanvasControls = () => {

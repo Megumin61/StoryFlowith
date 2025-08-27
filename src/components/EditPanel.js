@@ -41,7 +41,7 @@ function EditPanel({ node, onUpdateNode, onClose }) {
           </button>
         </div>
 
-        <div className="flex-grow p-4 overflow-y-auto">
+        <div className="flex-grow p-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300">
           {/* Text Editor */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">文字描述</label>

@@ -63,7 +63,7 @@ export class UserPersonaManager {
         const researchData = document.getElementById('research-data-input')?.value;
         
         if (!researchData?.trim()) {
-            alert('���������û���������');
+            alert('请先输入用于生成画像的研究数据');
             return;
         }
 
@@ -79,20 +79,20 @@ export class UserPersonaManager {
             this.renderPersonasList();
             this.showPersonaEditor(newPersona);
         } catch (error) {
-            console.error('AI�����û���ɫʧ��:', error);
-            alert('AI����ʧ�ܣ������������ӻ��Ժ�����');
+            console.error('AI 生成用户画像失败:', error);
+            alert('AI 生成失败，请检查网络连接或稍后重试');
         }
     }
 
     async generatePersonaFromResearch(researchData) {
-        // �򻯴�����ʵ����Ŀ��Ӧ�����ӵ���ʵ��API
+        // 简化的示例，实际项目中应当调用真实 API
         return {
-            name: '���ɵ��û�',
-            age: '25-35��',
-            occupation: '���ڵ������ݵ�ְҵ',
-            goals: '���ݵ������ݷ����ó���Ŀ��',
-            scenarios: '���ڵ������ݵ�ʹ�ó���',
-            frustrations: '�����з��ֵ���Ҫʹ��',
+            name: '生成的用户',
+            age: '25-35岁',
+            occupation: '与当前领域相关的职业',
+            goals: '基于研究数据总结的目标',
+            scenarios: '与当前领域相关的使用场景',
+            frustrations: '研究中发现的主要痛点',
             techLevel: 'intermediate'
         };
     }
@@ -122,13 +122,13 @@ export class UserPersonaManager {
         }
 
         this.renderPersonasList();
-        alert('�û���ɫ�ѱ���');
+        alert('用户画像已保存');
     }
 
     deleteCurrentPersona() {
         if (!this.selectedPersonaId) return;
         
-        if (window.confirm('ȷ��Ҫɾ������û���ɫ��')) {
+        if (window.confirm('确定要删除这个用户画像吗？')) {
             this.personas = this.personas.filter(p => p.id !== this.selectedPersonaId);
             this.selectedPersonaId = null;
             this.renderPersonasList();
@@ -144,7 +144,7 @@ export class UserPersonaManager {
             listContent.innerHTML = `
                 <div class="text-center text-gray-500 py-4">
                     <i data-lucide="users" class="w-8 h-8 mx-auto mb-2"></i>
-                    <p class="text-sm">�����û���ɫ</p>
+                    <p class="text-sm">暂无用户画像</p>
                 </div>
             `;
             return;
@@ -157,8 +157,8 @@ export class UserPersonaManager {
                         <i data-lucide="user" class="w-5 h-5 text-blue-600"></i>
                     </div>
                     <div class="flex-grow">
-                        <h4 class="font-medium text-gray-900">${persona.name || 'δ�����û�'}</h4>
-                        <p class="text-sm text-gray-500">${persona.occupation || 'ְҵδ����'}</p>
+                        <h4 class="font-medium text-gray-900">${persona.name || '未命名用户'}</h4>
+                        <p class="text-sm text-gray-500">${persona.occupation || '职业未填写'}</p>
                     </div>
                 </div>
             </div>
@@ -171,7 +171,7 @@ export class UserPersonaManager {
             });
         });
 
-        // ��ȫ�ص���lucideͼ�괴��
+        // 重新渲染 lucide 图标
         if (typeof window !== 'undefined' && window.lucide && typeof window.lucide.createIcons === 'function') {
             window.lucide.createIcons();
         }

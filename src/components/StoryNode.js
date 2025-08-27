@@ -374,6 +374,11 @@ const StoryNode = ({ data, selected }) => {
     
     if (nodeState === NODE_STATES.COLLAPSED) {
       setShowFloatingPanel(true);
+      
+      // 同步到父组件模型，触发布局（父层 updateNode 已内置智能重排）
+      if (typeof data.onUpdateNode === 'function') {
+        data.onUpdateNode(data.id, { showFloatingPanel: true });
+      }
     }
   };
 
@@ -388,8 +393,20 @@ const StoryNode = ({ data, selected }) => {
       setNodeState(newState);
       console.log(`节点状态从 ${nodeState} 变为 ${newState}`);
       
-      if (data.onNodeStateChange) {
-        data.onNodeStateChange(newState);
+      // 计算是否为展开状态
+      const isExpanded = newState === NODE_STATES.EXPANDED || 
+                        newState === NODE_STATES.EDITING || 
+                        newState === NODE_STATES.GENERATING ||
+                        newState === NODE_STATES.IMAGE_EDITING;
+      
+      // 先同步父层模型中的节点状态，避免布局时读取到旧状态
+      if (typeof data.onUpdateNode === 'function') {
+        data.onUpdateNode(data.id, { state: newState });
+      }
+      
+      // 下一事件循环再触发布局，确保状态已写入模型
+      if (typeof data.onNodeStateChange === 'function') {
+        setTimeout(() => data.onNodeStateChange(newState, isExpanded), 0);
       }
     }
   };
@@ -470,12 +487,22 @@ const StoryNode = ({ data, selected }) => {
     console.log('展开节点:', data.id);
     setNodeState(NODE_STATES.EXPANDED);
     
+    // 先同步父层模型中的节点状态
+    if (typeof data.onUpdateNode === 'function') {
+      data.onUpdateNode(data.id, { state: NODE_STATES.EXPANDED });
+    }
+    
+    // 通知父组件状态变化（延后一拍，避免读取旧状态）
+    if (typeof data.onNodeStateChange === 'function') {
+      setTimeout(() => data.onNodeStateChange(NODE_STATES.EXPANDED, true), 0);
+    }
+    
     // 同步展开态数据
     setExpandedData({
       script: data.text || '',
       visualElements: {
         bubbles: [],
-        composition: 'medium',
+        composition: [],
         style: 'sketch'
       },
       prompt: data.imagePrompt || ''
@@ -491,17 +518,27 @@ const StoryNode = ({ data, selected }) => {
       console.log('🖼️ 收起为带有图像的折叠状态');
       setNodeState(NODE_STATES.COLLAPSED_WITH_IMAGE);
       
-      // 通知父组件状态变化
-      if (data.onStateChange) {
-        data.onStateChange(data.id, 'collapsedWithImage', false);
+      // 先同步父层模型中的节点状态
+      if (typeof data.onUpdateNode === 'function') {
+        data.onUpdateNode(data.id, { state: NODE_STATES.COLLAPSED_WITH_IMAGE });
+      }
+      
+      // 通知父组件状态变化（延后一拍，避免读取旧状态）
+      if (typeof data.onNodeStateChange === 'function') {
+        setTimeout(() => data.onNodeStateChange(NODE_STATES.COLLAPSED_WITH_IMAGE, false), 0);
       }
     } else {
       console.log('📝 收起为普通折叠状态');
       setNodeState(NODE_STATES.COLLAPSED);
       
-      // 通知父组件状态变化
-      if (data.onStateChange) {
-        data.onStateChange(data.id, 'collapsed', false);
+      // 先同步父层模型中的节点状态
+      if (typeof data.onUpdateNode === 'function') {
+        data.onUpdateNode(data.id, { state: NODE_STATES.COLLAPSED });
+      }
+      
+      // 通知父组件状态变化（延后一拍，避免读取旧状态）
+      if (typeof data.onNodeStateChange === 'function') {
+        setTimeout(() => data.onNodeStateChange(NODE_STATES.COLLAPSED, false), 0);
       }
     }
   };
@@ -515,17 +552,27 @@ const StoryNode = ({ data, selected }) => {
       console.log('🖼️ 完成并收起为带有图像的折叠状态');
       setNodeState(NODE_STATES.COLLAPSED_WITH_IMAGE);
       
-      // 通知父组件状态变化
-      if (data.onStateChange) {
-        data.onStateChange(data.id, 'collapsedWithImage', false);
+      // 先同步父层模型中的节点状态
+      if (typeof data.onUpdateNode === 'function') {
+        data.onUpdateNode(data.id, { state: NODE_STATES.COLLAPSED_WITH_IMAGE });
+      }
+      
+      // 通知父组件状态变化（延后一拍，避免读取旧状态）
+      if (typeof data.onNodeStateChange === 'function') {
+        setTimeout(() => data.onNodeStateChange(NODE_STATES.COLLAPSED_WITH_IMAGE, false), 0);
       }
     } else {
       console.log('📝 完成并收起为普通折叠状态');
       setNodeState(NODE_STATES.COLLAPSED);
       
-      // 通知父组件状态变化
-      if (data.onStateChange) {
-        data.onStateChange(data.id, 'collapsed', false);
+      // 先同步父层模型中的节点状态
+      if (typeof data.onUpdateNode === 'function') {
+        data.onUpdateNode(data.id, { state: NODE_STATES.COLLAPSED });
+      }
+      
+      // 通知父组件状态变化（延后一拍，避免读取旧状态）
+      if (typeof data.onNodeStateChange === 'function') {
+        setTimeout(() => data.onNodeStateChange(NODE_STATES.COLLAPSED, false), 0);
       }
     }
   };
@@ -1296,18 +1343,29 @@ const StoryNode = ({ data, selected }) => {
           </div>
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => setNodeState(NODE_STATES.EXPANDED)}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              title="返回编辑模式"
+              onClick={() => {
+                setNodeState(NODE_STATES.EXPANDED);
+                // 通知父组件状态变化
+                if (data.onNodeStateChange) {
+                  data.onNodeStateChange(NODE_STATES.EXPANDED, true);
+                }
+              }}
+              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center justify-center space-x-2"
             >
               <Edit2 className="w-4 h-4" />
+              <span>继续编辑</span>
             </button>
             <button
-              onClick={() => setNodeState(NODE_STATES.COLLAPSED_WITH_IMAGE)}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              title="收起节点"
+              onClick={() => {
+                setNodeState(NODE_STATES.COLLAPSED_WITH_IMAGE);
+                // 通知父组件状态变化
+                if (data.onNodeStateChange) {
+                  data.onNodeStateChange(NODE_STATES.COLLAPSED_WITH_IMAGE, false);
+                }
+              }}
+              className="w-full px-4 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
             >
-              <X className="w-4 h-4" />
+              完成
             </button>
           </div>
         </div>
@@ -1347,8 +1405,14 @@ const StoryNode = ({ data, selected }) => {
             </button>
             
             <button
-              onClick={() => setNodeState(NODE_STATES.COLLAPSED_WITH_IMAGE)}
-              className="w-full px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+              onClick={() => {
+                setNodeState(NODE_STATES.COLLAPSED_WITH_IMAGE);
+                // 通知父组件状态变化
+                if (data.onNodeStateChange) {
+                  data.onNodeStateChange(NODE_STATES.COLLAPSED_WITH_IMAGE, false);
+                }
+              }}
+              className="w-full px-4 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
             >
               完成
             </button>
@@ -1538,7 +1602,7 @@ const StoryNode = ({ data, selected }) => {
                 <Edit3 className="w-4 h-4 mr-2 text-purple-500" />
                 编辑历史 ({data.editHistory.length})
               </h5>
-              <div className="space-y-2 max-h-40 overflow-y-auto">
+              <div className="space-y-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300">
                 {data.editHistory.slice(-3).reverse().map((edit, index) => (
                   <div key={index} className="p-2 bg-purple-50 rounded text-xs">
                     <div className="font-medium text-purple-700 mb-1">

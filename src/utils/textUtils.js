@@ -1,34 +1,34 @@
 /**
- * �ı��������ߺ������������������ı�
+ * 文本处理工具：包含常用的中文/英文文本处理函数
  */
 
-// ����ַ����Ƿ��������
+// 判断字符串是否包含中文
 export const hasChinese = (text) => {
   if (!text) return false;
   return /[\u4e00-\u9fa5]/.test(text);
 };
 
-// ȷ���ı���ȷ��ʾ����
+// 确保文本正确显示（占位函数）
 export const ensureChineseDisplay = (text) => {
   if (!text) return '';
   return text;
 };
 
-// ���������������������
+// 修复可能的中文编码问题（占位函数）
 export const fixChineseEncoding = (text) => {
   if (!text) return '';
   
-  // ����һЩ����������ģʽ�������Ҫ��
+  // 可在此处加入常见乱码替换规则
   return text;
 };
 
-// ��ȡ�ַ������ֽڳ��ȣ�������Ӣ�ģ�
+// 获取字符串的字节长度（中文按3字节计，UTF-8）
 export const getByteLength = (text) => {
   if (!text) return 0;
   
   let length = 0;
   for (let i = 0; i < text.length; i++) {
-    // �����ַ�ͨ��ռ��3���ֽڣ�UTF-8��
+    // 中文字符通常占用3个字节（UTF-8）
     if (text.charCodeAt(i) > 127) {
       length += 3;
     } else {
@@ -39,7 +39,7 @@ export const getByteLength = (text) => {
   return length;
 };
 
-// ��ȡ�̶����ȵ��ַ�������������
+// 获取固定长度的字符串，超出则截断并追加后缀
 export const truncateText = (text, maxLength, suffix = '...') => {
   if (!text) return '';
   if (text.length <= maxLength) return text;
@@ -47,7 +47,7 @@ export const truncateText = (text, maxLength, suffix = '...') => {
   return text.slice(0, maxLength) + suffix;
 };
 
-// ��ӡ���ĵ�����Ϣ
+// 打印中文调试信息
 export const logChinese = (text) => {
   if (!text) return;
   

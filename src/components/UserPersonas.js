@@ -313,7 +313,7 @@ const UserPersonas = ({ personas = [], selectedPersona, onSelectPersona, onUpdat
         
         <div className="flex flex-1 overflow-hidden">
           {/* 气泡区域 */}
-          <div className="w-1/2 p-6 border-r border-gray-100 overflow-y-auto">
+          <div className="w-1/2 p-6 border-r border-gray-100 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300">
             <h3 className="text-lg font-medium text-gray-900 mb-4">故事元素气泡</h3>
             <div className="space-y-4">
               <div>
@@ -596,7 +596,7 @@ const UserPersonas = ({ personas = [], selectedPersona, onSelectPersona, onUpdat
   };
 
   return (
-    <div className="fixed inset-0 bg-white z-40 overflow-y-auto">
+    <div className="fixed inset-0 bg-white z-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300">
       {/* 头部 */}
       <div className="sticky top-0 bg-white border-b border-gray-100 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -673,7 +673,7 @@ const UserPersonas = ({ personas = [], selectedPersona, onSelectPersona, onUpdat
               </div>
 
               {/* 右侧内容 */}
-              <div className="flex-1 p-6 overflow-y-auto">
+              <div className="flex-1 p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300">
                 {renderTabContent()}
               </div>
             </div>

@@ -272,7 +272,7 @@ function PersonaDetail({ persona, onClose, onSave }) {
         </div>
 
         {/* Content */}
-        <div className="flex-grow overflow-y-auto p-6">
+        <div className="flex-grow overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {dimensions.map((dimension) => (
               <div

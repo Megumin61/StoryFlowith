@@ -729,7 +729,7 @@ const CozeTest = ({ onClose }) => {
       </div>
 
       {/* 聊天区域 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300">
         {chatMessages.map((msg) => (
           <div
             key={msg.id}

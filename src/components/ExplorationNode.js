@@ -569,6 +569,13 @@ const ExplorationNode = ({
     setNodeState(prev => {
       const newState = prev === NODE_STATES.COLLAPSED ? NODE_STATES.EXPANDED : NODE_STATES.COLLAPSED;
       console.log('ExplorationNode state changing from', prev, 'to', newState);
+      
+      // 通知父组件状态变化，确保布局引擎能够及时调整
+      if (data.onNodeStateChange) {
+        const isExpanded = newState === NODE_STATES.EXPANDED;
+        data.onNodeStateChange(newState, isExpanded);
+      }
+      
       return newState;
     });
   };
@@ -579,6 +586,11 @@ const ExplorationNode = ({
     if (nodeState === NODE_STATES.COLLAPSED) {
       console.log('ExplorationNode expanding from collapsed state');
       setNodeState(NODE_STATES.EXPANDED);
+      
+      // 通知父组件状态变化
+      if (data.onNodeStateChange) {
+        data.onNodeStateChange(NODE_STATES.EXPANDED, true);
+      }
     }
     if (onNodeClick) {
       onNodeClick();
@@ -592,6 +604,11 @@ const ExplorationNode = ({
     setIsGenerating(true);
     setNodeState(NODE_STATES.GENERATING);
     
+    // 通知父组件状态变化
+    if (data.onNodeStateChange) {
+      data.onNodeStateChange(NODE_STATES.GENERATING, true);
+    }
+    
     try {
       // 模拟生成想法
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -604,6 +621,11 @@ const ExplorationNode = ({
       
       setGeneratedIdeas(ideas);
       setNodeState(NODE_STATES.CONFIRMING);
+      
+      // 通知父组件状态变化
+      if (data.onNodeStateChange) {
+        data.onNodeStateChange(NODE_STATES.CONFIRMING, true);
+      }
     } catch (error) {
       console.error('生成想法失败:', error);
     } finally {
@@ -632,12 +654,24 @@ const ExplorationNode = ({
     
     // 重置状态
     setNodeState(NODE_STATES.EXPANDED);
+    
+    // 通知父组件状态变化
+    if (data.onNodeStateChange) {
+      data.onNodeStateChange(NODE_STATES.EXPANDED, true);
+    }
+    
     setGeneratedIdeas([]);
     setSelectedIdeas([]);
   };
 
   const handleReset = () => {
     setNodeState(NODE_STATES.EXPANDED);
+    
+    // 通知父组件状态变化
+    if (data.onNodeStateChange) {
+      data.onNodeStateChange(NODE_STATES.EXPANDED, true);
+    }
+    
     setGeneratedIdeas([]);
     setSelectedIdeas([]);
     setExplorationText('');

@@ -36,7 +36,7 @@ function StoryScript({ storyData, show, onClose }) {
             <X className="w-6 h-6" />
           </button>
         </div>
-        <div className="flex-grow overflow-y-auto p-6">
+        <div className="flex-grow overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300">
           <div 
             id="story-script-content"
             className="prose max-w-none"

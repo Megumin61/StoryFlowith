@@ -79,7 +79,7 @@ function Sidebar({
   };
 
   return (
-    <aside id="sidebar" className="w-96 bg-white border-l border-gray-200 h-full flex-shrink-0 p-6 overflow-y-auto">
+    <aside id="sidebar" className="w-96 bg-white border-l border-gray-200 h-full flex-shrink-0 p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300">
       {!selectedFrameId ? (
         <div id="sidebar-placeholder">
           <div className="flex flex-col items-center justify-center h-full text-center text-gray-500">
