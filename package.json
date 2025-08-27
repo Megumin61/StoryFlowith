@@ -37,7 +37,8 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "coze-api": "node src/services/cozeAPI.js",
-    "test-coze": "node test-coze-api.js"
+    "test-coze": "node test-coze-api.js",
+    "start-fullstack": "concurrently \"npm run coze-api\" \"npm start\""
   },
   "eslintConfig": {
     "extends": [
@@ -56,5 +57,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
   }
 }
