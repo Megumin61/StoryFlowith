@@ -8,25 +8,6 @@ import YoudaoTranslate from '../services/youdaoTranslate';
 import { getBubbleStyle } from '../utils/bubbleStyles';
 import { generateVisualPrompt } from '../services/visualPromptService';
 
-// Toast 组件
-const Toast = ({ message, type = 'success', onClose }) => {
-  useEffect(() => {
-    const timer = setTimeout(onClose, 3000);
-    return () => clearTimeout(timer);
-  }, [onClose]);
-
-  return (
-    <motion.div
-      className={`fixed bottom-4 right-4 px-4 py-2 rounded-md shadow-md text-white text-sm z-50 ${type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 20 }}
-    >
-      {message}
-    </motion.div>
-  );
-};
-
 // 计算时间工具函数
 const calculateTime = (startTime, endTime) => {
   const timeDiff = endTime - startTime;
@@ -34,6 +15,8 @@ const calculateTime = (startTime, endTime) => {
   const milliseconds = timeDiff % 1000;
   return `${seconds}.${milliseconds.toString().padStart(3, '0')}秒`;
 };
+
+
 
 // 左右移动按钮组件
 const MoveNodeButtons = ({ onMoveLeft, onMoveRight, zIndex = 40 }) => (
@@ -148,7 +131,6 @@ const StoryNode = ({ data, selected }) => {
   const [visualPrompt, setVisualPrompt] = useState(data.imagePrompt || '');
   const [regeneratePrompt, setRegeneratePrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [toasts, setToasts] = useState([]);
   const [showFloatingPanel, setShowFloatingPanel] = useState(false);
   
   // 画面编辑状态
@@ -178,7 +160,6 @@ const StoryNode = ({ data, selected }) => {
   // refs
   const textAreaRef = useRef(null);
   const promptTextAreaRef = useRef(null);
-  const toastPositionRef = useRef({ x: 0, y: 0 });
   const nodeRef = useRef(null);
   const prevNodeStateRef = useRef(nodeState);
   const bubbleRefs = useRef({}); // 添加气泡refs用于获取宽度
@@ -393,22 +374,7 @@ const StoryNode = ({ data, selected }) => {
     }
   }, [nodeState, data]);
 
-  const addToast = (message, type = 'success') => {
-    if (nodeRef.current) {
-      const nodeBounds = nodeRef.current.getBoundingClientRect();
-      toastPositionRef.current = {
-        x: nodeBounds.left + nodeBounds.width / 2,
-        y: nodeBounds.bottom + 8
-      };
-    }
 
-    const id = Date.now();
-    setToasts((prev) => [...prev, { id, message, type }]);
-  };
-
-  const removeToast = (id) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
 
   const handleCardClick = () => {
     // 调用 onNodeClick 来选中节点
@@ -516,7 +482,6 @@ const StoryNode = ({ data, selected }) => {
       if (data.onTextSave) {
         data.onTextSave(nodeText);
       }
-      addToast('情节描述已保存', 'success');
     }
   };
 
@@ -662,8 +627,6 @@ const StoryNode = ({ data, selected }) => {
     if (data.onTextSave) {
       data.onTextSave(newScript);
     }
-    
-    addToast('故事脚本已保存', 'success');
   };
 
   // 重置脚本函数
@@ -868,8 +831,6 @@ const StoryNode = ({ data, selected }) => {
       
       // 更新本地状态
       data.image = previousImage.url;
-      
-      addToast(`切换到上一张图像 (${newIndex + 1}/${imageHistory.length})`, 'success');
     }
   };
 
@@ -887,8 +848,6 @@ const StoryNode = ({ data, selected }) => {
       
       // 更新本地状态
       data.image = nextImage.url;
-      
-      addToast(`切换到下一张图像 (${newIndex + 1}/${imageHistory.length})`, 'success');
     }
   };
 
@@ -988,7 +947,6 @@ const StoryNode = ({ data, selected }) => {
       
       // 检查是否有视觉提示词
       if (!visualPrompt || visualPrompt.trim() === '') {
-        addToast('请先输入视觉提示词', 'error');
         return;
       }
       
@@ -1068,7 +1026,6 @@ const StoryNode = ({ data, selected }) => {
       
     } catch (error) {
       console.error('❌ 图像生成失败:', error);
-      addToast('图像生成失败，请重试', 'error');
       
       // 生成失败时回到展开状态，不折叠
       setNodeState(NODE_STATES.EXPANDED);
@@ -1678,7 +1635,6 @@ const StoryNode = ({ data, selected }) => {
                 onClick={() => {
                   if (data.image) {
                     navigator.clipboard.writeText(data.image);
-                    addToast('图像URL已复制到剪贴板', 'success');
                   }
                 }}
                 className="w-full px-3 py-2 text-xs bg-gray-50 border border-gray-200 text-gray-600 rounded hover:bg-gray-100 transition-colors"
@@ -1855,13 +1811,9 @@ const StoryNode = ({ data, selected }) => {
                         bubbles: [...prev.visualElements.bubbles, newBubble]
                       }
                     }));
-                    
-                    // 显示成功提示
-                    addToast(`已添加关键词: ${keywordText.trim()}`, 'success');
                   }
                 } catch (error) {
                   console.error('处理拖拽数据时出错:', error);
-                  addToast('添加关键词失败，请重试', 'error');
                 }
               }}
               style={{ pointerEvents: 'auto' }}
@@ -2555,26 +2507,7 @@ const StoryNode = ({ data, selected }) => {
           )}
         </div>
         
-        <AnimatePresence>
-          {toasts.map((toast) => (
-            <div
-              key={toast.id}
-              style={{
-                position: 'absolute',
-                left: `${toastPositionRef.current.x}px`,
-                top: `${toastPositionRef.current.y}px`,
-                transform: 'translateX(-50%)',
-                zIndex: 9999
-              }}
-            >
-              <Toast
-                message={toast.message}
-                type={toast.type}
-                onClose={() => removeToast(toast.id)}
-              />
-            </div>
-          ))}
-        </AnimatePresence>
+
       </>
     );
   };
