@@ -191,10 +191,11 @@ const calculateDynamicGap = (currentNode, currentIndex, allNodes) => {
 
 // 递归布局算法 - 支持无限嵌套的树状结构和动态间距调整
 const layoutTree = (storyModel, selectedFrameId, getNodeById, getBranchById, updateNode) => {
-  
-
-  
-
+  // 确保输入参数有效
+  if (!storyModel || !storyModel.branches || !storyModel.nodes) {
+    console.warn('layoutTree: 无效的输入参数');
+    return;
+  }
 
   const { BASE_LEFT, BASE_TOP, VERTICAL_GAP, BRANCH_LINE_GAP } = DYNAMIC_LAYOUT_CONFIG;
 
@@ -204,12 +205,15 @@ const layoutTree = (storyModel, selectedFrameId, getNodeById, getBranchById, upd
   // 递归布局函数
   const layoutBranch = (branchId, startX, startY, level = 0) => {
     const branch = getBranchById(branchId);
-    if (!branch) return { width: 0, height: 0 };
+    if (!branch) {
+      console.warn('layoutBranch: 分支不存在:', branchId);
+      return { width: 0, height: 0 };
+    }
 
     // 获取分支内的节点，并按照nodeIndex排序
     const branchNodes = branch.nodeIds
       .map(nodeId => getNodeById(nodeId))
-      .filter(Boolean)
+      .filter(Boolean) // 过滤掉不存在的节点
       .sort((a, b) => {
         // 优先使用nodeIndex，如果没有则使用在branch.nodeIds中的位置
         const aIndex = a.nodeIndex !== undefined ? a.nodeIndex : branch.nodeIds.indexOf(a.id);
@@ -217,8 +221,7 @@ const layoutTree = (storyModel, selectedFrameId, getNodeById, getBranchById, upd
         return aIndex - bIndex;
       });
 
-
-
+    // 如果分支中没有有效节点，返回空尺寸
     if (branchNodes.length === 0) return { width: 0, height: 0 };
 
     let currentX = startX;
@@ -337,8 +340,12 @@ const layoutTree = (storyModel, selectedFrameId, getNodeById, getBranchById, upd
 
 // 全局 layoutTree 包装函数
 const globalLayoutTree = () => {
-  if (globalStoryModel && globalSelectedFrameId !== null && globalGetNodeById && globalGetBranchById && globalUpdateNode) {
-    layoutTree(globalStoryModel, globalSelectedFrameId, globalGetNodeById, globalGetBranchById, globalUpdateNode);
+  if (globalStoryModel && globalGetNodeById && globalGetBranchById && globalUpdateNode) {
+    // 确保有有效的节点数据
+    const hasValidNodes = Object.keys(globalStoryModel.nodes || {}).length > 0;
+    if (hasValidNodes) {
+      layoutTree(globalStoryModel, globalSelectedFrameId, globalGetNodeById, globalGetBranchById, globalUpdateNode);
+    }
   }
 };
 
@@ -353,7 +360,10 @@ const updateNodeState = (nodeId, state, isExpanded) => {
   
   // 立即触发动态重新布局，确保节点间距保持动态不变
   const currentNode = globalGetNodeById ? globalGetNodeById(nodeId) : null;
-  if (!currentNode) return;
+  if (!currentNode) {
+    console.warn('updateNodeState: 节点不存在:', nodeId);
+    return;
+  }
 
   const isExplorationNode = currentNode.type === NODE_TYPES.EXPLORATION || currentNode.explorationData?.isExplorationNode;
 
@@ -425,8 +435,11 @@ const smartRelayout = (branch, changedNodeId) => {
   const uniqueIds = Array.from(new Set(branch.nodeIds));
   const branchNodes = uniqueIds
     .map(nodeId => globalGetNodeById(nodeId))
-    .filter(Boolean)
+    .filter(Boolean) // 过滤掉不存在的节点
     .sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
+  
+  // 如果没有有效节点，直接返回
+  if (branchNodes.length === 0) return;
   
   const changedNodeIndex = branchNodes.findIndex(node => node.id === changedNodeId);
   if (changedNodeIndex === -1) return;
@@ -493,8 +506,11 @@ const checkAndFixOverlaps = (branch, depth = 0) => {
   const uniqueIds = Array.from(new Set(branch.nodeIds));
   const branchNodes = uniqueIds
     .map(nodeId => globalGetNodeById(nodeId))
-    .filter(Boolean)
+    .filter(Boolean) // 过滤掉不存在的节点
     .sort((a, b) => (a.nodeIndex || 0) - (b.nodeIndex || 0));
+  
+  // 如果没有有效节点，直接返回
+  if (branchNodes.length === 0) return;
   
   let hasOverlap = false;
   
@@ -1039,6 +1055,7 @@ function StoryboardCanvas({
   const lastWorldPosRef = useRef({ x: 0, y: 0 });
   const scaleRef = useRef(1);
   const hasFocusedRef = useRef(false); // 添加聚焦标志位
+ // 添加缩放状态用于UI显示
 
 
 
@@ -1099,15 +1116,32 @@ function StoryboardCanvas({
       canvasContainer.classList.remove('grabbing');
     };
 
-    // 添加鼠标滚轮缩放功能
+    // 添加鼠标滚轮缩放功能 - 以鼠标为中心进行缩放
     const handleWheel = (e) => {
       e.preventDefault();
 
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      // 检查是否按住Ctrl/Cmd键，如果是则进行更精细的缩放
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      const zoomFactor = isCtrlOrCmd ? 0.05 : 0.1; // 更精细的缩放
+      const delta = e.deltaY > 0 ? (1 - zoomFactor) : (1 + zoomFactor);
       const newScale = Math.max(0.1, Math.min(3, scaleRef.current * delta));
 
       if (newScale !== scaleRef.current) {
+        // 获取鼠标在画布容器中的位置
+        const rect = canvasContainer.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        // 计算缩放前鼠标在世界坐标系中的位置
+        const worldMouseX = (mouseX - worldPosRef.current.x) / scaleRef.current;
+        const worldMouseY = (mouseY - worldPosRef.current.y) / scaleRef.current;
+
+        // 更新缩放
         scaleRef.current = newScale;
+
+        // 计算新的世界位置，使鼠标位置保持不变
+        worldPosRef.current.x = mouseX - worldMouseX * newScale;
+        worldPosRef.current.y = mouseY - worldMouseY * newScale;
 
         if (canvasWorldRef.current) {
           const transform = `translate(${worldPosRef.current.x}px, ${worldPosRef.current.y}px) scale(${newScale})`;
@@ -1116,22 +1150,68 @@ function StoryboardCanvas({
       }
     };
 
+    // 添加键盘快捷键控制缩放
+    const handleKeyDown = (e) => {
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      
+      // Ctrl/Cmd + 0: 重置缩放
+      if (isCtrlOrCmd && e.key === '0') {
+        e.preventDefault();
+        scaleRef.current = 1;
+        worldPosRef.current = { x: 0, y: 0 };
+        lastWorldPosRef.current = { x: 0, y: 0 };
+        
+        if (canvasWorldRef.current) {
+          const transform = `translate(0px, 0px) scale(1)`;
+          canvasWorldRef.current.style.transform = transform;
+        }
+      }
+      
+      // Ctrl/Cmd + =: 放大
+      if (isCtrlOrCmd && (e.key === '=' || e.key === '+')) {
+        e.preventDefault();
+        const newScale = Math.min(3, scaleRef.current * 1.1);
+        if (newScale !== scaleRef.current) {
+          scaleRef.current = newScale;
+          if (canvasWorldRef.current) {
+            const transform = `translate(${worldPosRef.current.x}px, ${worldPosRef.current.y}px) scale(${newScale})`;
+            canvasWorldRef.current.style.transform = transform;
+          }
+        }
+      }
+      
+      // Ctrl/Cmd + -: 缩小
+      if (isCtrlOrCmd && e.key === '-') {
+        e.preventDefault();
+        const newScale = Math.max(0.1, scaleRef.current * 0.9);
+        if (newScale !== scaleRef.current) {
+          scaleRef.current = newScale;
+          if (canvasWorldRef.current) {
+            const transform = `translate(${worldPosRef.current.x}px, ${worldPosRef.current.y}px) scale(${newScale})`;
+            canvasWorldRef.current.style.transform = transform;
+          }
+        }
+      }
+    };
+
     canvasContainer.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     canvasContainer.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('keydown', handleKeyDown);
 
     return () => {
       canvasContainer.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
       canvasContainer.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
   const renderConnections = useCallback(() => {
     const svg = document.getElementById('canvas-connections');
-    if (!svg || !storyModel) return;
+    if (!svg || !storyModel || !storyModel.branches || !storyModel.nodes) return;
 
     // 清除现有的连接线和圆点，保留defs
     const existingDefs = svg.querySelector('defs');
@@ -1157,11 +1237,14 @@ function StoryboardCanvas({
 
     // 第二步：绘制分支点的连线（从起源节点到分支第一个节点）
     Object.values(storyModel.branches).forEach(branch => {
-      if (branch.originNodeId && branch.nodeIds.length > 0) {
+      // 确保分支有效且有节点
+      if (branch && branch.originNodeId && branch.nodeIds && branch.nodeIds.length > 0) {
         const originNode = storyModel.nodes[branch.originNodeId];
         const firstBranchNode = storyModel.nodes[branch.nodeIds[0]];
 
-        if (originNode && firstBranchNode) {
+        // 确保两个节点都存在且都有有效的位置信息
+        if (originNode && firstBranchNode && originNode.pos && firstBranchNode.pos && 
+            typeof originNode.pos.x === 'number' && typeof firstBranchNode.pos.x === 'number') {
           const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
 
           // 动态计算节点宽度和高度
@@ -1497,7 +1580,6 @@ function StoryboardCanvas({
             })}
         </div>
       </div>
-
 
     </div>
   );
@@ -3389,8 +3471,6 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   }, []);
 
   const removeNodeFromBranch = useCallback((branchId, nodeId) => {
-
-    
     setStoryModel(prev => {
       const branch = prev.branches[branchId];
       if (!branch) {
@@ -3398,8 +3478,8 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
         return prev;
       }
 
+      // 过滤掉要删除的节点ID
       const newNodeIds = branch.nodeIds.filter(id => id !== nodeId);
-
 
       return {
         ...prev,
@@ -5431,8 +5511,6 @@ window.debugNodeSpacing = debugNodeSpacing;
 
   // 处理节点删除 - 使用新的树状数据结构
   const handleDeleteNode = (nodeId) => {
-
-    
     // 获取要删除的节点
     const nodeToDelete = getNodeById(nodeId);
     if (!nodeToDelete) {
@@ -5440,7 +5518,12 @@ window.debugNodeSpacing = debugNodeSpacing;
       return;
     }
 
-    // 从分支中移除节点
+    // 如果删除的是当前选中的节点，清除选择
+    if (selectedFrameId === nodeId) {
+      setSelectedFrameId(null);
+    }
+
+    // 从分支中移除节点（先更新分支，再删除节点）
     if (nodeToDelete.branchId) {
       removeNodeFromBranch(nodeToDelete.branchId, nodeId);
       
@@ -5462,11 +5545,6 @@ window.debugNodeSpacing = debugNodeSpacing;
 
     // 删除节点
     removeNode(nodeId);
-
-    // 如果删除的是当前选中的节点，清除选择
-    if (selectedFrameId === nodeId) {
-      setSelectedFrameId(null);
-    }
 
     // 删除后重新排布，确保剩余节点位置正确
     setTimeout(() => {
