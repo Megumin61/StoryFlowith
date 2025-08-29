@@ -63,6 +63,7 @@ const DYNAMIC_LAYOUT_CONFIG = {
   PANEL_WIDTH: 132, // 面板宽度
   NODE_WIDTH: {
     COLLAPSED: 240,
+    COLLAPSED_WITH_IMAGE: 320, // 带有图像的折叠状态宽度
     EXPANDED: 360
   }
 };
@@ -126,8 +127,11 @@ const getNodeDisplayWidth = (node) => {
   if (node.state === 'generating' || node.state === 'expanded' || node.state === 'editing') {
     // 画面生成状态和展开状态：1200px (横向布局)
     baseWidth = 1200;
+  } else if (node.state === 'collapsedWithImage' || (node.image && node.state === 'collapsed')) {
+    // 带有图像的折叠状态：320px
+    baseWidth = 320;
   } else {
-    // 折叠状态：240px
+    // 普通折叠状态：240px
     baseWidth = 240;
   }
   
@@ -524,8 +528,13 @@ const checkAndFixOverlaps = (branch, depth = 0) => {
 // 初始化节点状态函数
 const initializeNodeState = (nodeId) => {
   if (!nodeStatesRef[nodeId]) {
+    // 检查节点是否有图像，如果有则初始化为带有图像的折叠状态
+    const node = globalGetNodeById ? globalGetNodeById(nodeId) : null;
+    const hasImage = node && node.image;
+    const initialState = hasImage ? 'collapsedWithImage' : 'collapsed';
+    
     nodeStatesRef[nodeId] = {
-      state: 'collapsed',
+      state: initialState,
       isExpanded: false,
       lastUpdated: Date.now()
     };
@@ -1481,6 +1490,7 @@ function StoryboardCanvas({
                     onGenerateImage={onGenerateImage}
                     onDeleteFrame={onDeleteFrame}
                     onUpdateNode={updateNode}
+                    personas={personas} // 传递用户画像数据
                   />
                 </div>
               );
@@ -3105,6 +3115,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   // 增加多步骤流程状态
   const [currentStep, setCurrentStep] = useState('interview'); // 'interview', 'persona', 'story', 'preparation', 'canvas', 'coze'
   const [selectedKeywords, setSelectedKeywords] = useState([]);
+  const [currentInterviewKeywords, setCurrentInterviewKeywords] = useState([]);
   const [personas, setPersonas] = useState([]);
   const [story, setStory] = useState('');
   const [showPersonaDetail, setShowPersonaDetail] = useState(null);
@@ -3157,9 +3168,7 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
     return sortedNodes;
   }, [storyModel]);
   const [selectedFrameId, setSelectedFrameId] = useState(null);
-  const [selectedStyle, setSelectedStyle] = useState('style1');
   const [useRealApi, setUseRealApi] = useState(true);
-  const [referenceImageUrl, setReferenceImageUrl] = useState(styleUrls.style1);
   const [apiStatus, setApiStatus] = useState('初始化中...');
   const [lastError, setLastError] = useState(null);
 
@@ -3170,7 +3179,6 @@ const StoryboardFlow = ({ initialStoryText, onClose }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isKeywordPoolCollapsed, setIsKeywordPoolCollapsed] = useState(false);
   const [activeKeywordTypeCanvas, setActiveKeywordTypeCanvas] = useState('all');
-  const [isReferenceDropdownOpen, setIsReferenceDropdownOpen] = useState(false);
 
   // 情景探索相关状态
   const [isSceneExplorationOpen, setIsSceneExplorationOpen] = useState(false);
@@ -4092,25 +4100,23 @@ window.debugNodeSpacing = debugNodeSpacing;
     return Array.from(keywordMap.values());
   }, []);
 
-  // 切换访谈记录时，显示当前案例中所有访谈记录的关键词并集
+  // 切换访谈记录时，更新当前访谈记录的关键词（用于圈画显示）
+  useEffect(() => {
+    const currentInterview = currentCase.interviews[currentInterviewIndex];
+    if (currentInterview && currentInterview.keywords) {
+      setCurrentInterviewKeywords(currentInterview.keywords);
+    } else {
+      setCurrentInterviewKeywords([]);
+    }
+  }, [currentCaseIndex, currentInterviewIndex, currentCase]);
+
+  // 切换访谈记录时，显示当前案例中所有访谈记录的关键词并集（用于右侧关键词区域）
   useEffect(() => {
     const mergedKeywords = recalculateMergedKeywords(currentCase.interviews);
     setSelectedKeywords(mergedKeywords);
-  }, [currentCaseIndex, currentInterviewIndex, recalculateMergedKeywords]);
+  }, [currentCaseIndex, recalculateMergedKeywords]);
 
-  // 点击外部关闭下拉菜单
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (isReferenceDropdownOpen && !event.target.closest('.reference-dropdown')) {
-        setIsReferenceDropdownOpen(false);
-      }
-    };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isReferenceDropdownOpen]);
 
   // 关键词类型配置 - 使用统一的颜色系统
   const keywordTypes = [
@@ -4396,6 +4402,9 @@ window.debugNodeSpacing = debugNodeSpacing;
     // 重新计算所有访谈记录的关键词并集
     const mergedKeywords = recalculateMergedKeywords(updatedInterviewList);
     setSelectedKeywords(mergedKeywords);
+    
+    // 更新当前访谈记录的关键词状态
+    setCurrentInterviewKeywords(updatedInterviewList[currentInterviewIndex].keywords || []);
     // 这里可以添加保存到本地存储或发送到服务器的逻辑
   };
 
@@ -4427,6 +4436,9 @@ window.debugNodeSpacing = debugNodeSpacing;
     // 重新计算所有访谈记录的关键词并集
     const mergedKeywords = recalculateMergedKeywords(updatedInterviewList);
     setSelectedKeywords(mergedKeywords);
+    
+    // 更新当前访谈记录的关键词状态
+    setCurrentInterviewKeywords(updatedInterviewList[currentInterviewIndex].keywords || []);
     
     setCustomKeywordText(''); // 清空输入框
   };
@@ -4867,7 +4879,7 @@ window.debugNodeSpacing = debugNodeSpacing;
           persona_name: persona.persona_name || '未命名用户',
           persona_summary: persona.persona_summary || '',
           memorable_quote: persona.memorable_quote || '',
-          appearance_characteristics: persona.Appearance_characteristics || '',
+          appearance_characteristics: persona["Appearance characteristics"] || persona.Appearance_characteristics || '',
           persona_details: {
             age: persona.basic_profile?.age || '',
             occupation: persona.basic_profile?.occupation || '',
@@ -4891,16 +4903,8 @@ window.debugNodeSpacing = debugNodeSpacing;
         if (result.bubbles) {
           console.log('🔄 更新气泡数据:', result.bubbles);
           
-          // 先清除当前AI生成的气泡内容，保留用户选择的关键词
-          const currentBubbles = allKeywords.filter(k => k.source === 'agent_generated');
-          const remainingKeywords = allKeywords.filter(k => 
-            k.source === 'user_selected' || 
-            k.source === 'user_custom' || 
-            !k.source // 兼容旧数据，没有source属性的也保留
-          );
-          
-          console.log('🗑️ 清除的AI生成气泡:', currentBubbles.map(b => `${b.text} (${b.type})`));
-          console.log('💾 保留的用户关键词:', remainingKeywords.map(k => `${k.text} (${k.type}) [${k.source || 'legacy'}]`));
+          // 记录当前气泡池的内容（用于日志）
+          console.log('🗑️ 清除当前气泡池内容:', allKeywords.map(k => `${k.text} (${k.type})`));
           
           // 生成新的气泡数据
           const newBubbles = [];
@@ -4924,17 +4928,32 @@ window.debugNodeSpacing = debugNodeSpacing;
           
           console.log('🆕 新生成的AI气泡:', newBubbles.map(b => `${b.text} (${b.type})`));
           
-          // 合并用户选择的关键词和新生成的气泡
-          const updatedKeywords = [...remainingKeywords, ...newBubbles];
-          setSelectedKeywords(updatedKeywords);
+          // 完全替换气泡池内容，不再保留用户之前的关键词
+          setSelectedKeywords(newBubbles);
           
           console.log('✅ 气泡数据更新完成:', {
-            removedBubbles: currentBubbles.length,
+            removedBubbles: allKeywords.length,
             newBubbles: newBubbles.length,
-            totalKeywords: updatedKeywords.length,
-            userSelected: remainingKeywords.length,
+            totalKeywords: newBubbles.length,
             aiGenerated: newBubbles.length
           });
+          
+          // 更新当前访谈记录的关键词状态
+          setCurrentInterviewKeywords(newBubbles);
+          
+          // 更新所有访谈记录的关键词，用新的气泡数据替换
+          const updatedInterviewList = [...currentCase.interviews];
+          updatedInterviewList.forEach((interview, index) => {
+            updatedInterviewList[index] = {
+              ...interview,
+              keywords: newBubbles
+            };
+          });
+          
+          setCurrentCase(prev => ({
+            ...prev,
+            interviews: updatedInterviewList
+          }));
         }
       } else {
         console.warn('⚠️ API返回的用户画像数据为空');
@@ -5055,7 +5074,7 @@ window.debugNodeSpacing = debugNodeSpacing;
       setStory(selectedStory.content);
       const initialStoryModel = generateInitialFrames({
         storyScript: selectedStory.content,
-        selectedStyle: 'style1',
+
         frameCount: 1,
         settings: {
           aspectRatio: '16:9',
@@ -5081,6 +5100,8 @@ window.debugNodeSpacing = debugNodeSpacing;
     setPersonas(prev => prev.map(p =>
       p.persona_name === updatedPersona.persona_name ? updatedPersona : p
     ));
+    setSelectedPersona(updatedPersona);
+    setEditingPersona(null);
   };
 
 
@@ -5195,7 +5216,7 @@ window.debugNodeSpacing = debugNodeSpacing;
       pos: { x: centerX, y: centerY },
       baseX: centerX, // 设置基准位置
       connections: [],
-      styleName: config.selectedStyle,
+      
       branchId: rootBranchId,
       nodeIndex: 0,
       isInitialFrame: true,
@@ -5467,9 +5488,6 @@ window.debugNodeSpacing = debugNodeSpacing;
   const handleNodeStateChange = (nodeId, newState, isExpanded) => {
     console.log('节点状态变化:', nodeId, newState, 'isExpanded:', isExpanded);
     
-    // 更新节点数据
-    updateNode(nodeId, { state: newState });
-    
     // 更新节点状态并触发动态重新布局
     // 检查是否为带有图像的折叠状态
     const currentNode = getNodeById ? getNodeById(nodeId) : null;
@@ -5479,18 +5497,19 @@ window.debugNodeSpacing = debugNodeSpacing;
     
     // 如果没有传递isExpanded参数，则根据状态推断
     if (isExpanded === undefined) {
-    if (newState === 'expanded' || newState === 'editing' || newState === 'generating') {
-      isExpanded = true;
-    } else if (newState === 'collapsed' && hasImage) {
-      // 带有图像的折叠状态，需要特殊处理
-      isExpanded = false;
-      finalState = 'collapsedWithImage';
-      // 确保状态被正确识别为带有图像的折叠状态
-      updateNode(nodeId, { state: 'collapsedWithImage' });
-    } else {
-      isExpanded = false;
+      if (newState === 'expanded' || newState === 'editing' || newState === 'generating') {
+        isExpanded = true;
+      } else if (newState === 'collapsed' && hasImage) {
+        // 带有图像的折叠状态，需要特殊处理
+        isExpanded = false;
+        finalState = 'collapsedWithImage';
+      } else {
+        isExpanded = false;
       }
     }
+    
+    // 更新节点数据
+    updateNode(nodeId, { state: finalState });
     
     // 调用布局引擎的状态更新函数
     updateNodeState(nodeId, finalState, isExpanded);
@@ -5616,7 +5635,7 @@ window.debugNodeSpacing = debugNodeSpacing;
                 </div>
               </div>
             )}
-            {renderHighlightedText(currentInterview.text, selectedKeywords)}
+                            {renderHighlightedText(currentInterview.text, currentInterviewKeywords)}
           </div>
 
           <div className="mt-4 text-sm text-gray-600">
@@ -6006,73 +6025,7 @@ window.debugNodeSpacing = debugNodeSpacing;
           </button>
 
 
-          {/* 画面参考下拉组件 */}
-          <div className="relative reference-dropdown">
-            <button
-              onClick={() => setIsReferenceDropdownOpen(prev => !prev)}
-              className="flex items-center space-x-3 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <div className="w-8 h-8 rounded overflow-hidden border border-gray-200">
-                <img
-                  src={styleUrls[selectedStyle] || styleUrls.style1}
-                  alt="风格参考"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src = testImage;
-                  }}
-                />
-              </div>
-              <span className="text-gray-700 font-medium">画面参考</span>
-              <ChevronDown className="w-4 h-4 text-gray-500" />
-            </button>
 
-            {/* 下拉菜单 */}
-            {isReferenceDropdownOpen && (
-              <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                <div className="p-3 border-b border-gray-100">
-                  <h3 className="text-sm font-medium text-gray-700">选择参考风格</h3>
-                </div>
-                <div className="p-3 space-y-2">
-                  {[
-                    { id: 'style1', label: '动漫风格', image: styleUrls.style1 },
-                    { id: 'style2', label: '写实风格', image: styleUrls.style2 },
-                    { id: 'style3', label: '水彩风格', image: styleUrls.style3 },
-                    { id: 'style4', label: '插画风格', image: styleUrls.style4 }
-                  ].map(style => (
-                    <button
-                      key={style.id}
-                      onClick={() => {
-                        setSelectedStyle(style.id);
-                        setReferenceImageUrl(style.image);
-                        setIsReferenceDropdownOpen(false);
-                      }}
-                      className={`w-full flex items-center space-x-3 p-2 rounded-lg transition-colors ${selectedStyle === style.id
-                          ? 'bg-blue-50 border border-blue-200'
-                          : 'hover:bg-gray-50'
-                        }`}
-                    >
-                      <div className="w-10 h-10 rounded overflow-hidden border border-gray-200">
-                        <img
-                          src={style.image}
-                          alt={style.label}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            e.target.onerror = null;
-                            e.target.src = testImage;
-                          }}
-                        />
-                      </div>
-                      <span className="text-sm text-gray-700">{style.label}</span>
-                      {selectedStyle === style.id && (
-                        <CheckCircle className="w-4 h-4 text-blue-600 ml-auto" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
 
           {/* 添加分镜按钮 */}
           <button
@@ -6129,7 +6082,7 @@ window.debugNodeSpacing = debugNodeSpacing;
                 pos: { x: newBaseX, y: 150 },
                 baseX: newBaseX,
                 connections: [],
-                styleName: selectedStyle,
+        
                 branchId: rootBranch.id,
                 nodeIndex: typeof insertIndex === 'number' ? insertIndex : rootBranch.nodeIds.length
               };

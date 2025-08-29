@@ -34,9 +34,9 @@ export const getNodeType = (node) => {
 };
 
 // 节点渲染组件
-const NodeRenderer = ({
-  node,
-  selected,
+const NodeRenderer = ({ 
+  node, 
+  selected, 
   onNodeClick,
   onNodeDelete,
   onGenerateBranches,
@@ -48,7 +48,8 @@ const NodeRenderer = ({
   onExploreScene,
   onGenerateImage,
   onDeleteFrame,
-  onUpdateNode
+  onUpdateNode,
+  personas // 添加用户画像数据参数
 }) => {
   const nodeType = getNodeType(node);
 
@@ -85,7 +86,8 @@ const NodeRenderer = ({
         onExploreScene,
         onGenerateImage,
         onDeleteFrame,
-        onUpdateNode
+        onUpdateNode,
+        personas // 传递用户画像数据
       }}
       selected={selected}
     />

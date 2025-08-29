@@ -35,6 +35,7 @@ const mapCompositionReference = (compositionId) => {
  * @param {Array} visualPromptData.keywordBubbles.goal - 目标相关关键词
  * @param {Array} visualPromptData.keywordBubbles.pain - 痛点相关关键词
  * @param {Array} visualPromptData.keywordBubbles.emotion - 情感相关关键词
+ * @param {Object} visualPromptData.currentPersona - 当前用户画像数据
  * @returns {Promise<Object>} 返回生成的画面提示词数据
  */
 export const generateVisualPrompt = async (visualPromptData) => {
@@ -42,13 +43,21 @@ export const generateVisualPrompt = async (visualPromptData) => {
     console.log('🎨 开始生成画面提示词');
     console.log('🔍 接收到的数据:', visualPromptData);
     
+    // 获取当前用户画像的外观特征
+    const appearanceCharacteristics = visualPromptData.currentPersona?.appearance_characteristics || 
+                                    visualPromptData.currentPersona?.["Appearance characteristics"] || 
+                                    visualPromptData.currentPersona?.Appearance_characteristics || '';
+    
+    console.log('👤 当前用户画像外观特征:', appearanceCharacteristics);
+    
     // 构造结构化数据，转换为JSON字符串放在query字段中
     const structuredData = {
       branch_context: visualPromptData.branchContext || '', // 分支上下文
       current_frame_story: visualPromptData.currentFrameStory || '', // 当前分镜故事
       initial_visual_prompt: visualPromptData.initialVisualPrompt || '', // 初始视觉提示词
       composition_reference: mapCompositionReference(visualPromptData.compositionReference || 'medium'), // 构图参考
-      bubbles: visualPromptData.keywordBubbles || [] // 关键词气泡数组，格式: [{type, keyword, importance}]
+      bubbles: visualPromptData.keywordBubbles || [], // 关键词气泡数组，格式: [{type, keyword, importance}]
+      appearance_characteristics: appearanceCharacteristics // 用户画像外观特征
     };
     
     const requestData = {
@@ -69,6 +78,7 @@ export const generateVisualPrompt = async (visualPromptData) => {
     console.log('  - initial_visual_prompt:', structuredData.initial_visual_prompt);
     console.log('  - composition_reference:', structuredData.composition_reference);
     console.log('  - bubbles:', structuredData.bubbles);
+    console.log('  - appearance_characteristics:', structuredData.appearance_characteristics);
     
     // 调用画面提示词生成bot
     const response = await axios.post(`${COZE_API_BASE}/api/coze/chat`, requestData);

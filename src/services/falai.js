@@ -22,11 +22,15 @@ fal.config({
 const EXAMPLE_IMAGE_URL = "https://v3.fal.media/files/rabbit/rmgBxhwGYb2d3pl3x9sKf_output.png";
 
 // 公开可访问的风格图片URL
+// 要替换这些图片，你可以：
+// 1. 将新图片上传到你的云存储服务（如腾讯云COS、阿里云OSS等）
+// 2. 或者将图片放在public目录下，使用相对路径
+// 3. 或者使用其他可公开访问的图片URL
 const STYLE_URLS = {
-  style1: "https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style1.png",
-  style2: "https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style2.png",
-  style3: "https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style3.png",
-  style4: "https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style4.png"
+  style1: "https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style1.png", // 动漫风格
+  style2: "https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style2.png", // 写实风格  
+  style3: "https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style3.png", // 水彩风格
+  style4: "https://storyboard-1304373505.cos.ap-guangzhou.myqcloud.com/style4.png"  // 插画风格
 };
 
 // 本地测试图片，用作备选
@@ -139,7 +143,7 @@ const generateTextToImage = async (prompt) => {
     // 构建请求参数 - 包含所有必需参数
     const input = {
       prompt: finalPrompt,
-      image_url: getStyleImageUrl('style1'), // 默认使用style1作为参考风格
+      image_urls: [getStyleImageUrl('style1')], // 默认使用style1作为参考风格
       aspect_ratio: "16:9",
       sync_mode: true
     };
@@ -149,7 +153,7 @@ const generateTextToImage = async (prompt) => {
     console.log('文生图请求参数:', JSON.stringify(input, null, 2));
     
     // 使用queue.submit方法替代subscribe方法
-    const { request_id } = await fal.queue.submit("fal-ai/flux-pro/kontext", {
+    const { request_id } = await fal.queue.submit("fal-ai/nano-banana/edit", {
       input: input
     });
     
@@ -167,7 +171,7 @@ const generateTextToImage = async (prompt) => {
       attempts++;
       
       // 获取请求状态
-      const status = await fal.queue.status("fal-ai/flux-pro/kontext", {
+      const status = await fal.queue.status("fal-ai/nano-banana/edit", {
         requestId: request_id,
         logs: true
       });
@@ -181,7 +185,7 @@ const generateTextToImage = async (prompt) => {
       
       if (status.status === "COMPLETED") {
         // 获取结果
-        result = await fal.queue.result("fal-ai/flux-pro/kontext", {
+        result = await fal.queue.result("fal-ai/nano-banana/edit", {
           requestId: request_id
         });
         break;
@@ -245,8 +249,8 @@ const generateImageToImage = async (prompt, imageUrl, modelType = 'generate') =>
     
     // 根据modelType确定使用的模型
     const modelEndpoint = modelType === 'edit' ? 
-      "fal-ai/flux-pro/kontext/max" : 
-      "fal-ai/flux-pro/kontext";
+      "fal-ai/nano-banana/edit" : 
+      "fal-ai/nano-banana/edit";
     
     console.log(`[图生图] 使用模型: ${modelEndpoint} (模式: ${modelType})`);
     
@@ -292,7 +296,7 @@ const generateImageToImage = async (prompt, imageUrl, modelType = 'generate') =>
     // 构建请求参数 - 包含所有必需参数
     const input = {
       prompt: finalPrompt,
-      image_url: finalImageUrl,
+      image_urls: [finalImageUrl],
       aspect_ratio: "16:9",
       sync_mode: true
     };
@@ -300,7 +304,7 @@ const generateImageToImage = async (prompt, imageUrl, modelType = 'generate') =>
     // 打印请求参数
     debugLog('图生图请求参数:', JSON.stringify({
       ...input,
-      image_url: input.image_url.substring(0, 30) + '...'
+      image_urls: input.image_urls.map(url => url.substring(0, 30) + '...')
     }));
     
     console.log('[图生图] 开始API调用');
@@ -432,7 +436,7 @@ const editImage = async (params) => {
     // 构建请求参数，使用fal.ai的图像编辑模型
     const requestParams = {
       prompt: params.prompt,
-      image_url: params.image_url,
+      image_urls: [params.image_url],
       strength: params.strength || 0.7,
       guidance_scale: params.guidance_scale || 7.5,
       num_inference_steps: params.num_inference_steps || 30,
@@ -442,7 +446,7 @@ const editImage = async (params) => {
     debugLog('发送图像编辑请求，参数:', requestParams);
     
     // 调用fal.ai的图像编辑API
-    const result = await fal.subscribe("fal-ai/flux-pro/kontext/max", {
+    const result = await fal.subscribe("fal-ai/nano-banana/edit", {
       input: requestParams,
       logs: falConfig.debug,
       onQueueUpdate: (update) => {

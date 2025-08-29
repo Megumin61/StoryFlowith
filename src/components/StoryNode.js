@@ -1062,6 +1062,7 @@ const StoryNode = ({ data, selected }) => {
         currentFrameStory: data.text || '', // 当前分镜故事脚本
         initialVisualPrompt: visualPrompt || '', // 用户输入的初始视觉提示词
         compositionReference: expandedData.visualElements.composition || 'medium', // 用户选择的构图参考
+        currentPersona: data.personas?.[0] || null, // 当前用户画像数据（取第一个）
         keywordBubbles: (() => {
           // 将气泡转换为后端期望的格式
           const bubbleMappings = expandedData.visualElements.bubbles.map(bubble => {

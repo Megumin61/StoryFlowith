@@ -346,9 +346,15 @@ export const transformFrontendData = (frontendData) => {
  * @returns {object} 转换后的前端数据
  */
 export const transformApiResponse = (apiResponse) => {
-  // 这里可以根据实际的前端数据结构进行调整
+  // 转换用户画像数据，确保字段名映射正确
+  const transformedPersonas = (apiResponse.personas || []).map(persona => ({
+    ...persona,
+    // 确保外观特征字段正确映射
+    appearance_characteristics: persona["Appearance characteristics"] || persona.Appearance_characteristics || persona.appearance_characteristics || ''
+  }));
+  
   return {
-    personas: apiResponse.personas || [],
+    personas: transformedPersonas,
     bubbles: apiResponse.bubbles || {},
     rawResponse: apiResponse // 保留原始响应以备需要
   };
